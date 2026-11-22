@@ -245,3 +245,68 @@ def sanitize_avatar(picture: bytes) -> tuple[bytes, str] | tuple[None, str]:
             return out.getvalue(), ".jpg"
     except Exception:
         return None, ""
+
+
+_CAPTCHA_SECRET = os.environ.get("ONDETEM_SECRET", "") or hashlib.sha256(
+    (os.environ.get("DATABASE_URL", "") + "ondetem-captcha-v35").encode("utf-8")
+).hexdigest()
+
+
+def turnstile_site_key() -> str:
+    site = os.environ.get("TURNSTILE_SITE_KEY", "").strip()
+    secret = os.environ.get("TURNSTILE_SECRET_KEY", "").strip()
+    return site if (site and secret) else ""
+
+
+def generate_math_challenge() -> tuple[str, str]:
+    """Gera desafio humano simples com token HMAC assinado (expira em 15 min)."""
+    import secrets as _sec
+    a = _sec.randbelow(8) + 2
+    b = _sec.randbelow(8) + 1
+    exp = int(time.time()) + 900
+    ans = str(a + b)
+    payload = f"{exp}:{ans}"
+    sig = hmac.new(_CAPTCHA_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()[:24]
+    return f"Quanto é {a} + {b}?", f"{exp}:{sig}"
+
+
+def verify_math_challenge(token: str, answer: str) -> bool:
+    """Valida resposta do desafio humano assinado."""
+    try:
+        exp_str, sig = (token or "").split(":", 1)
+        exp = int(exp_str)
+        if exp < int(time.time()):
+            return False
+        clean_ans = str(int((answer or "").strip()))
+        expected = hmac.new(
+            _CAPTCHA_SECRET.encode("utf-8"),
+            f"{exp}:{clean_ans}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()[:24]
+        return hmac.compare_digest(sig, expected)
+    except (ValueError, TypeError):
+        return False
+
+
+def verify_turnstile(token: str, remote_ip: str = "") -> bool:
+    """Valida token do Cloudflare Turnstile no servidor."""
+    import json as _json
+    import urllib.parse as _up
+    import urllib.request as _ur
+
+    secret = os.environ.get("TURNSTILE_SECRET_KEY", "").strip()
+    if not secret or not token:
+        return False
+    data = _up.urlencode({"secret": secret, "response": token, "remoteip": remote_ip}).encode("utf-8")
+    req = _ur.Request(
+        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with _ur.urlopen(req, timeout=10) as resp:
+            res = _json.loads(resp.read().decode("utf-8"))
+            return bool(res.get("success"))
+    except Exception:
+        return False

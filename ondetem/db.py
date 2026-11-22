@@ -140,6 +140,7 @@ POSTGRES_SCHEMA = [
         email TEXT NOT NULL UNIQUE,
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL CHECK(role IN ('cliente', 'profissional')),
+        email_verified INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL
     )
     """,
@@ -224,6 +225,14 @@ POSTGRES_SCHEMA = [
         created_at TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS email_verifications (
+        token_hash TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at TEXT NOT NULL,
+        used_at TEXT
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_prof_cat_neigh ON professionals(category, neighborhood)",
     "CREATE INDEX IF NOT EXISTS idx_reviews_pro ON reviews(professional_id)",
     "CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id)",
@@ -242,12 +251,16 @@ def init_database(db_path: Path | None = None, database_url: str | None = None) 
         if db.is_postgres:
             db.execute("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS avatar_url TEXT NOT NULL DEFAULT ''")
             db.execute("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS whatsapp_clicks INTEGER NOT NULL DEFAULT 0")
+            db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER NOT NULL DEFAULT 1")
         else:
             cols = {row["name"] for row in db.fetchall("PRAGMA table_info(professionals)")}
             if "avatar_url" not in cols:
                 db.execute("ALTER TABLE professionals ADD COLUMN avatar_url TEXT NOT NULL DEFAULT ''")
             if "whatsapp_clicks" not in cols:
                 db.execute("ALTER TABLE professionals ADD COLUMN whatsapp_clicks INTEGER NOT NULL DEFAULT 0")
+            ucols = {row["name"] for row in db.fetchall("PRAGMA table_info(users)")}
+            if "email_verified" not in ucols:
+                db.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1")
         if db.fetchone("SELECT 1 AS ok FROM users LIMIT 1"):
             return
         _seed_demo_data(db)

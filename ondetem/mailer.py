@@ -65,3 +65,54 @@ def send_password_reset_email(to_email: str, user_name: str, reset_url: str) -> 
     except (urllib.error.URLError, TimeoutError, ValueError) as exc:
         print(f"[OndeTem Mailer - ERRO] Falha ao enviar e-mail via Resend: {exc}")
         return False
+
+
+def send_verification_email(to_email: str, user_name: str, verify_url: str) -> bool:
+    """Envia link de confirmação de e-mail para novos cadastros."""
+    api_key = os.environ.get("RESEND_API_KEY", "").strip()
+    sender = os.environ.get("MAIL_FROM", "OndeTem Manaus <onboarding@resend.dev>").strip()
+    first_name = (user_name or "").split()[0] if user_name else "Olá"
+
+    html_body = f"""
+    <div style="font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;max-width:540px;margin:0 auto;padding:24px;color:#133C55;">
+      <h2 style="margin:0 0 12px;color:#133C55;">Onde<span style="color:#F07830;">Tem</span> · Manaus</h2>
+      <p>Bem-vindo(a), <strong>{esc(first_name)}</strong>!</p>
+      <p>Confirme seu e-mail para ativar sua conta completa e poder publicar avaliações no OndeTem:</p>
+      <p style="margin:24px 0;">
+        <a href="{esc(verify_url)}" style="display:inline-block;background:#1E8E5A;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:10px;">
+          Confirmar meu e-mail
+        </a>
+      </p>
+      <p style="font-size:13px;color:#5A6B7C;">Este link é válido por <strong>24 horas</strong>.</p>
+    </div>
+    """
+
+    if not api_key:
+        print(f"[OndeTem Mailer - DEV] Link de verificação para {to_email}: {verify_url}")
+        return True
+
+    payload = json.dumps(
+        {
+            "from": sender,
+            "to": [to_email],
+            "subject": "Confirme seu e-mail · OndeTem Manaus",
+            "html": html_body,
+        }
+    ).encode("utf-8")
+
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "User-Agent": "OndeTem/3.5",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return 200 <= resp.status < 300
+    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+        print(f"[OndeTem Mailer - ERRO] Falha ao enviar verificação via Resend: {exc}")
+        return False

@@ -188,7 +188,29 @@ class FastApiIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(bad.status_code, 400)
 
-        # Aceitando termos cria conta e faz login
+        # Extrai desafio anti-robô da página /cadastro
+        signup_page = self.client.get("/cadastro")
+        tok = re.search(r'name="captcha_token" value="([^"]+)"', signup_page.text).group(1)
+        m_eq = re.search(r'Quanto é (\d+) \+ (\d+)\?', signup_page.text)
+        ans = str(int(m_eq.group(1)) + int(m_eq.group(2)))
+
+        # Honeypot preenchido (bot) deve ser barrado
+        bot = self.client.post(
+            "/cadastro",
+            data={
+                "name": "Bot Spam",
+                "email": "bot@ondetem.local",
+                "password": "SenhaForte123!",
+                "role": "cliente",
+                "accept_terms": "1",
+                "website_url": "http://spam.example",
+                "captcha_token": tok,
+                "captcha_answer": ans,
+            },
+        )
+        self.assertEqual(bot.status_code, 400)
+
+        # Aceitando termos + anti-bot cria conta (inicialmente não verificada)
         ok = self.client.post(
             "/cadastro",
             data={
@@ -197,6 +219,8 @@ class FastApiIntegrationTests(unittest.TestCase):
                 "password": "SenhaForte123!",
                 "role": "cliente",
                 "accept_terms": "1",
+                "captcha_token": tok,
+                "captcha_answer": ans,
             },
             follow_redirects=False,
         )
@@ -282,6 +306,28 @@ class FastApiIntegrationTests(unittest.TestCase):
         for icon in ("/static/icon-192.png", "/static/icon-512.png", "/static/apple-touch-icon.png"):
             r = self.client.get(icon)
             self.assertEqual(r.status_code, 200)
+
+
+
+    def test_email_verification_unlocks_account(self):
+        from datetime import datetime, timedelta, timezone
+        from ondetem.db import get_db
+        from ondetem.security import token_hash
+        with get_db(db_path=self.db_path) as db:
+            uid = db.insert_returning_id(
+                "INSERT INTO users (name, email, password_hash, role, email_verified, created_at) VALUES (?, ?, ?, 'cliente', 0, ?)",
+                ("Novo Usuario", "novo@ondetem.local", password_hash("SenhaForte123!"), "2026-11-22T15:00:00+00:00"),
+            )
+            exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(timespec="seconds")
+            db.execute(
+                "INSERT INTO email_verifications (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
+                (token_hash("verify_tok_999"), uid, exp),
+            )
+        res = self.client.get("/verificar-email?token=verify_tok_999", follow_redirects=False)
+        self.assertEqual(res.status_code, 303)
+        with get_db(db_path=self.db_path) as db:
+            val = db.scalar("SELECT email_verified FROM users WHERE id = ?", (uid,))
+            self.assertEqual(int(val), 1)
 
 
 if __name__ == "__main__":

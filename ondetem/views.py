@@ -9,6 +9,8 @@ from ondetem.config import CATEGORIES, NEIGHBORHOODS, READ_ONLY_DEMO, RESPONSE_T
 from ondetem.storage import resolve_image_url
 from ondetem.security import (
     esc,
+    generate_math_challenge,
+    turnstile_site_key,
     format_manaus_date,
     format_manaus_time,
     format_phone_display,
@@ -218,6 +220,7 @@ def layout_page(
     </div>
   </header>
   {readonly_banner}
+  {(f'<div class="notice warn verify-banner" role="status"><span>Confirme seu e-mail para liberar avaliações.</span><form method="post" action="/reenviar-verificacao"><input type="hidden" name="csrf" value="{esc(user["csrf"])}"><button type="submit">Reenviar link</button></form></div>') if (user and not user.get('email_verified', 1)) else ''}
   {alert}
   <main id="conteudo">{content}</main>
   <footer class="footer">
@@ -723,6 +726,22 @@ def auth_view(role: str = "cliente", login: bool = False, next_path: str = "", e
           <p class="auth-switch">Não tem conta? <a href="/cadastro">Cadastre-se gratuitamente</a></p>"""
     else:
         title = "Faça parte do OndeTem."
+        ts_key = turnstile_site_key()
+        if ts_key:
+            antibot_html = (
+                f'<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>'
+                f'<div class="cf-turnstile" data-sitekey="{esc(ts_key)}"></div>'
+            )
+        else:
+            q_math, tok_math = generate_math_challenge()
+            antibot_html = (
+                f'<div class="antibot-box">'
+                f'<label>Verificação anti-robô: <strong>{esc(q_math)}</strong>'
+                f'<input type="number" name="captcha_answer" inputmode="numeric" required placeholder="Digite o resultado">'
+                f'</label>'
+                f'<input type="hidden" name="captcha_token" value="{esc(tok_math)}">'
+                f'</div>'
+            )
         subtitle = "Escolha como deseja usar a plataforma em Manaus."
         action = "/cadastro"
         extra = f"""
@@ -752,6 +771,10 @@ def auth_view(role: str = "cliente", login: bool = False, next_path: str = "", e
             <input type="password" name="password" minlength="8" autocomplete="new-password" required>
           </label>
           {extra}
+          <div class="hp-field" aria-hidden="true">
+            <label>Não preencha este campo<input type="text" name="website_url" tabindex="-1" autocomplete="off"></label>
+          </div>
+          {antibot_html}
           <label class="checkbox terms-check">
             <input type="checkbox" name="accept_terms" value="1" required>
             <span>Li e concordo com os <a href="/termos" target="_blank">Termos de Uso</a> e a <a href="/privacidade" target="_blank">Política de Privacidade (LGPD)</a>.</span>

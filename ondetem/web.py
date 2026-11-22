@@ -41,9 +41,12 @@ from ondetem.security import (
     sanitize_avatar,
     sanitize_image,
     token_hash,
+    turnstile_site_key,
+    verify_math_challenge,
+    verify_turnstile,
     whatsapp_link,
 )
-from ondetem.mailer import mailer_backend_name, send_password_reset_email
+from ondetem.mailer import mailer_backend_name, send_password_reset_email, send_verification_email
 from ondetem.storage import delete_stored_image, storage_backend_name, upload_image
 from ondetem.views import (
     account_view,
@@ -105,7 +108,7 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
         if not token:
             return None
         row = db.fetchone(
-            """SELECT u.id, u.name, u.email, u.role, s.csrf
+            """SELECT u.id, u.name, u.email, u.role, COALESCE(u.email_verified, 1) AS email_verified, s.csrf
                FROM sessions s JOIN users u ON u.id = s.user_id
                WHERE s.token_hash = ? AND s.expires_at > ?""",
             (token_hash(token), now_iso()),
@@ -274,9 +277,11 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
         response.headers["Referrer-Policy"] = "same-origin"
         response.headers["Permissions-Policy"] = "geolocation=(self), camera=(), microphone=()"
         if not request.url.path.startswith(("/docs", "/redoc", "/openapi.json")):
+            ts_script = " https://challenges.cloudflare.com" if turnstile_site_key() else ""
+            ts_frame = " frame-src https://challenges.cloudflare.com;" if turnstile_site_key() else ""
             response.headers["Content-Security-Policy"] = (
-                "default-src 'self'; img-src 'self' data: https://res.cloudinary.com; style-src 'self' 'unsafe-inline'; "
-                "script-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+                f"default-src 'self'; img-src 'self' data: https://res.cloudinary.com; style-src 'self' 'unsafe-inline'; "
+                f"script-src 'self'{ts_script};{ts_frame} base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
             )
         return response
 
@@ -306,7 +311,7 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
         with open_db() as db:
             pros = int(db.scalar("SELECT COUNT(*) FROM professionals", default=0))
             return JSONResponse(
-                {"status": "ok", "version": __version__, "database": db.engine_name, "storage": storage_backend_name(), "mailer": mailer_backend_name(), "professionals": pros}
+                {"status": "ok", "version": __version__, "database": db.engine_name, "storage": storage_backend_name(), "mailer": mailer_backend_name(), "antibot": "turnstile" if turnstile_site_key() else "signed_challenge", "professionals": pros}
             )
 
     @app.get("/api/profissionais", tags=["Profissionais"])
@@ -385,6 +390,10 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
         neighborhood: str = Form(""),
         whatsapp: str = Form(""),
         accept_terms: str = Form(""),
+        website_url: str = Form(""),
+        captcha_token: str = Form(""),
+        captcha_answer: str = Form(""),
+        cf_turnstile_response: str = Form("", alias="cf-turnstile-response"),
     ):
         client_ip = request.client.host if request.client else "local"
         if not AUTH_LIMITER.allow(f"signup:{client_ip}"):
@@ -395,6 +404,23 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
         name_c = name.strip()[:80]
         email_c = email.strip().lower()[:255]
         wa_clean = clean_whatsapp(whatsapp)
+        if website_url.strip():
+            return HTMLResponse(
+                layout_page("Cadastro", auth_view(role=role, error="Verificação anti-robô falhou. Tente novamente.")),
+                status_code=400,
+            )
+        if turnstile_site_key():
+            if not verify_turnstile(cf_turnstile_response, client_ip):
+                return HTMLResponse(
+                    layout_page("Cadastro", auth_view(role=role, error="Confirme a verificação anti-robô antes de continuar.")),
+                    status_code=400,
+                )
+        else:
+            if not verify_math_challenge(captcha_token, captcha_answer):
+                return HTMLResponse(
+                    layout_page("Cadastro", auth_view(role=role, error="Resposta da verificação anti-robô incorreta. Tente novamente.")),
+                    status_code=400,
+                )
         if accept_terms != "1":
             return HTMLResponse(
                 layout_page("Cadastro", auth_view(role=role, error="Você precisa aceitar os Termos de Uso e a Política de Privacidade (LGPD).")),
@@ -414,7 +440,7 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
         with open_db() as db:
             try:
                 uid = db.insert_returning_id(
-                    "INSERT INTO users (name, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO users (name, email, password_hash, role, email_verified, created_at) VALUES (?, ?, ?, ?, 0, ?)",
                     (name_c, email_c, password_hash(password), role, now_iso()),
                 )
                 if role == "profissional":
@@ -428,7 +454,16 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
                     layout_page("Cadastro", auth_view(role=role, error="Este e-mail já está cadastrado.")),
                     status_code=409,
                 )
-            return login_redirect(db, uid, "/painel" if role == "profissional" else "/buscar")
+            vtok = secrets.token_urlsafe(32)
+            vexp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(timespec="seconds")
+            db.execute(
+                "INSERT INTO email_verifications (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
+                (token_hash(vtok), uid, vexp),
+            )
+            base_url = str(request.base_url).rstrip("/")
+            send_verification_email(email_c, name_c, f"{base_url}/verificar-email?token={quote(vtok)}")
+            dest = "/painel?msg=" + quote("Conta criada! Confirme o link enviado ao seu e-mail.") if role == "profissional" else "/buscar?msg=" + quote("Conta criada! Confirme o link enviado ao seu e-mail.")
+            return login_redirect(db, uid, dest)
 
     @app.get("/entrar", response_class=HTMLResponse, include_in_schema=False)
     def page_login(request: Request, next: str = ""):  # noqa: A002
@@ -605,6 +640,13 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
         with open_db() as db:
             user = current_user(db, request)
             if not check_csrf(user, csrf) or user["role"] != "cliente":
+                return HTMLResponse(layout_page("Acesso negado", '<section class="container section"><h1>Acesso negado.</h1></section>'), status_code=403)
+            if not user.get("email_verified", 1):
+                return RedirectResponse(
+                    url=f"/perfil/{pro_id}?msg=" + quote("Confirme seu e-mail antes de publicar uma avaliação."),
+                    status_code=303,
+                )
+            if False:
                 return HTMLResponse(layout_page("Acesso negado", '<section class="container section"><h1>Acesso negado.</h1></section>'), status_code=403)
             if not get_pro(db, pro_id):
                 return HTMLResponse(layout_page("Não encontrado", '<section class="container section"><h1>Profissional não encontrado.</h1></section>'), status_code=404)
@@ -927,6 +969,41 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
                 return HTMLResponse(layout_page("Acesso negado", '<section class="container section"><h1>Acesso negado.</h1></section>'), status_code=403)
             db.execute("DELETE FROM reviews WHERE id = ?", (review_id,))
             return RedirectResponse(url="/admin?msg=" + quote("Avaliação removida pela moderação."), status_code=303)
+
+
+    @app.get("/verificar-email", include_in_schema=False)
+    def action_verify_email(token: str = ""):
+        if not token:
+            return RedirectResponse(url="/?msg=" + quote("Link de verificação inválido."), status_code=303)
+        with open_db() as db:
+            rec = db.fetchone(
+                "SELECT * FROM email_verifications WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?",
+                (token_hash(token), now_iso()),
+            )
+            if not rec:
+                return RedirectResponse(url="/?msg=" + quote("Link de verificação expirado ou já utilizado."), status_code=303)
+            db.execute("UPDATE users SET email_verified = 1 WHERE id = ?", (rec["user_id"],))
+            db.execute("UPDATE email_verifications SET used_at = ? WHERE token_hash = ?", (now_iso(), rec["token_hash"]))
+        return RedirectResponse(url="/?msg=" + quote("E-mail confirmado com sucesso! Sua conta está 100% ativa."), status_code=303)
+
+    @app.post("/reenviar-verificacao", include_in_schema=False)
+    def action_resend_verification(request: Request, csrf: str = Form("")):
+        with open_db() as db:
+            user = current_user(db, request)
+            if not check_csrf(user, csrf):
+                return HTMLResponse(layout_page("Acesso negado", '<section class="container section"><h1>Sessão expirada.</h1></section>'), status_code=403)
+            if user.get("email_verified"):
+                return RedirectResponse(url="/?msg=" + quote("Seu e-mail já está confirmado."), status_code=303)
+            vtok = secrets.token_urlsafe(32)
+            vexp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(timespec="seconds")
+            db.execute("DELETE FROM email_verifications WHERE user_id = ?", (user["id"],))
+            db.execute(
+                "INSERT INTO email_verifications (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
+                (token_hash(vtok), user["id"], vexp),
+            )
+            base_url = str(request.base_url).rstrip("/")
+            send_verification_email(str(user["email"]), str(user["name"]), f"{base_url}/verificar-email?token={quote(vtok)}")
+        return RedirectResponse(url="/?msg=" + quote("Novo link de confirmação enviado ao seu e-mail!"), status_code=303)
 
     return app
 
