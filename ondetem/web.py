@@ -11,7 +11,7 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from ondetem import __version__
@@ -279,6 +279,25 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
                 "script-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
             )
         return response
+
+
+    # ----------------------------- PWA (MANIFEST + SERVICE WORKER) -----------------------------
+
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    def pwa_manifest():
+        return FileResponse(
+            STATIC_DIR / "manifest.json",
+            media_type="application/manifest+json",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+
+    @app.get("/sw.js", include_in_schema=False)
+    def pwa_service_worker():
+        return FileResponse(
+            STATIC_DIR / "sw.js",
+            media_type="application/javascript",
+            headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+        )
 
     # ----------------------------- API JSON -----------------------------
 

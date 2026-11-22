@@ -186,6 +186,11 @@ def layout_page(
   <meta name="description" content="Encontre profissionais autônomos de manutenção e reparos avaliados em Manaus.">
   <meta name="theme-color" content="#133C55">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="OndeTem">
   <meta property="og:type" content="website">
   <meta property="og:title" content="OndeTem Manaus · Profissionais autônomos no seu bairro">
   <meta property="og:description" content="Encontre eletricistas, encanadores, técnicos de ar-condicionado e outros profissionais avaliados em Manaus.">
@@ -231,6 +236,16 @@ def layout_page(
       </div>
     </div>
   </footer>
+  <div class="pwa-banner" id="pwa-banner" hidden>
+    <div>
+      <strong>Instale o OndeTem no celular</strong>
+      <small>Acesso rápido direto da sua tela inicial</small>
+    </div>
+    <div class="pwa-banner-actions">
+      <button type="button" class="button small" id="pwa-install-btn">Instalar</button>
+      <button type="button" class="pwa-close" id="pwa-dismiss-btn" aria-label="Fechar">×</button>
+    </div>
+  </div>
   <div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="Visualizar foto do trabalho">
     <button type="button" class="lightbox-close" data-lightbox-close aria-label="Fechar visualização">×</button>
     <figure class="lightbox-content">

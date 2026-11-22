@@ -1,0 +1,38 @@
+{
+  "name": "OndeTem Manaus",
+  "short_name": "OndeTem",
+  "description": "Encontre profissionais autônomos avaliados no seu bairro em Manaus.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F6FAFB",
+  "theme_color": "#133C55",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Buscar profissionais",
+      "short_name": "Buscar",
+      "url": "/buscar"
+    },
+    {
+      "name": "Meu painel",
+      "short_name": "Painel",
+      "url": "/painel"
+    }
+  ]
+}

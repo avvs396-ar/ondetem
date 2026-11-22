@@ -269,5 +269,20 @@ class FastApiIntegrationTests(unittest.TestCase):
         self.assertEqual(tog.status_code, 303)
 
 
+
+    def test_pwa_manifest_sw_and_icons(self):
+        m = self.client.get("/manifest.webmanifest")
+        self.assertEqual(m.status_code, 200)
+        self.assertEqual(m.json()["display"], "standalone")
+
+        sw = self.client.get("/sw.js")
+        self.assertEqual(sw.status_code, 200)
+        self.assertEqual(sw.headers.get("service-worker-allowed"), "/")
+
+        for icon in ("/static/icon-192.png", "/static/icon-512.png", "/static/apple-touch-icon.png"):
+            r = self.client.get(icon)
+            self.assertEqual(r.status_code, 200)
+
+
 if __name__ == "__main__":
     unittest.main()

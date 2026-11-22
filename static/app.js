@@ -237,4 +237,38 @@ document.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => notice.remove(), 350);
     }, 5000);
   }
+
+  // 11. PWA: registrar Service Worker e exibir banner de instalação
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
+
+  let deferredPrompt = null;
+  const pwaBanner = document.getElementById('pwa-banner');
+  const pwaInstallBtn = document.getElementById('pwa-install-btn');
+  const pwaDismissBtn = document.getElementById('pwa-dismiss-btn');
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    try {
+      if (localStorage.getItem('ondetem_pwa_dismissed') === '1') return;
+    } catch {}
+    if (pwaBanner) pwaBanner.hidden = false;
+  });
+
+  pwaInstallBtn?.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    if (pwaBanner) pwaBanner.hidden = true;
+  });
+
+  pwaDismissBtn?.addEventListener('click', () => {
+    if (pwaBanner) pwaBanner.hidden = true;
+    try { localStorage.setItem('ondetem_pwa_dismissed', '1'); } catch {}
+  });
 });
