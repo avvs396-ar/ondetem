@@ -228,3 +228,20 @@ class RateLimiter:
 
 
 AUTH_LIMITER = RateLimiter(max_requests=15, window_seconds=60)
+
+
+def sanitize_avatar(picture: bytes) -> tuple[bytes, str] | tuple[None, str]:
+    """Valida, recorta em quadrado 512x512 e remove metadados EXIF da foto de perfil."""
+    cleaned, ext = sanitize_image(picture)
+    if not cleaned:
+        return None, ""
+    try:
+        with Image.open(io.BytesIO(cleaned)) as img:
+            img = ImageOps.fit(img, (512, 512), method=Image.Resampling.LANCZOS)
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+            out = io.BytesIO()
+            img.save(out, format="JPEG", quality=86, optimize=True)
+            return out.getvalue(), ".jpg"
+    except Exception:
+        return None, ""

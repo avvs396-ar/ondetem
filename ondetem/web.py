@@ -36,9 +36,11 @@ from ondetem.security import (
     password_hash,
     password_matches,
     safe_destination,
+    sanitize_avatar,
     sanitize_image,
     token_hash,
 )
+from ondetem.storage import delete_stored_image, storage_backend_name, upload_image
 from ondetem.views import (
     auth_view,
     chat_view,
@@ -252,7 +254,7 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
         response.headers["Permissions-Policy"] = "geolocation=(self), camera=(), microphone=()"
         if not request.url.path.startswith(("/docs", "/redoc", "/openapi.json")):
             response.headers["Content-Security-Policy"] = (
-                "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+                "default-src 'self'; img-src 'self' data: https://res.cloudinary.com; style-src 'self' 'unsafe-inline'; "
                 "script-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
             )
         return response
@@ -264,7 +266,7 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
         with open_db() as db:
             pros = int(db.scalar("SELECT COUNT(*) FROM professionals", default=0))
             return JSONResponse(
-                {"status": "ok", "version": __version__, "database": db.engine_name, "professionals": pros}
+                {"status": "ok", "version": __version__, "database": db.engine_name, "storage": storage_backend_name(), "professionals": pros}
             )
 
     @app.get("/api/profissionais", tags=["Profissionais"])
@@ -483,6 +485,31 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
             )
             return RedirectResponse(url="/painel?msg=" + quote("Perfil atualizado com sucesso."), status_code=303)
 
+
+    @app.post("/perfil/foto", include_in_schema=False)
+    async def action_update_avatar(
+        request: Request,
+        csrf: str = Form(""),
+        avatar: UploadFile = File(...),
+    ):
+        with open_db() as db:
+            user = current_user(db, request)
+            if not check_csrf(user, csrf) or user["role"] != "profissional":
+                return HTMLResponse(layout_page("Acesso negado", '<section class="container section"><h1>Acesso negado.</h1></section>'), status_code=403)
+            raw = await avatar.read()
+            clean_bytes, ext = sanitize_avatar(raw)
+            if not clean_bytes or not ext:
+                return RedirectResponse(
+                    url="/painel?msg=" + quote("Envie uma foto JPG, PNG ou WEBP válida de até 3 MB."),
+                    status_code=303,
+                )
+            old_row = db.fetchone("SELECT avatar_url FROM professionals WHERE user_id = ?", (user["id"],))
+            stored_avatar = upload_image(clean_bytes, ext, folder="ondetem/avatars")
+            db.execute("UPDATE professionals SET avatar_url = ? WHERE user_id = ?", (stored_avatar, user["id"]))
+            if old_row and old_row.get("avatar_url"):
+                delete_stored_image(str(old_row["avatar_url"]))
+            return RedirectResponse(url="/painel?msg=" + quote("Foto de perfil atualizada!"), status_code=303)
+
     @app.post("/portfolio/adicionar", include_in_schema=False)
     async def action_add_portfolio(
         request: Request,
@@ -505,12 +532,10 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
                     url="/painel?msg=" + quote("Envie JPG, PNG ou WEBP válido (até 3 MB) com legenda."),
                     status_code=303,
                 )
-            filename = secrets.token_hex(16) + ext
-            UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-            (UPLOADS_DIR / filename).write_bytes(clean_bytes)
+            stored_img = upload_image(clean_bytes, ext, folder="ondetem/portfolio")
             db.execute(
                 "INSERT INTO works (professional_id, image, caption, created_at) VALUES (?, ?, ?, ?)",
-                (user["id"], "uploads/" + filename, cap, now_iso()),
+                (user["id"], stored_img, cap, now_iso()),
             )
             return RedirectResponse(url="/painel?msg=" + quote("Foto adicionada ao portfólio."), status_code=303)
 
@@ -526,10 +551,7 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
             )
             if row:
                 db.execute("DELETE FROM works WHERE id = ?", (work_id,))
-                if str(row["image"]).startswith("uploads/"):
-                    fp = (STATIC_DIR / row["image"]).resolve()
-                    if fp.is_relative_to(UPLOADS_DIR.resolve()) and fp.is_file():
-                        fp.unlink(missing_ok=True)
+                delete_stored_image(str(row["image"]))
             return RedirectResponse(url="/painel?msg=" + quote("Foto removida do portfólio."), status_code=303)
 
     @app.post("/iniciar/{pro_id}", include_in_schema=False)

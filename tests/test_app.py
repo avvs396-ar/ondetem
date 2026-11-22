@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from ondetem.db import translate_sql_for_postgres
+from ondetem.storage import build_cloudinary_signature, resolve_image_url
 from ondetem.security import (
     clean_whatsapp,
     normalize_text,
@@ -57,6 +58,17 @@ class SecurityAndDbUnitTests(unittest.TestCase):
         self.assertEqual(
             translate_sql_for_postgres(sql),
             "SELECT * FROM users WHERE email = %s AND role = %s",
+        )
+
+
+
+    def test_cloudinary_signature_and_url_resolution(self):
+        sig = build_cloudinary_signature({"public_id": "ondetem/x", "timestamp": "1700000000"}, "secret")
+        self.assertEqual(len(sig), 40)
+        self.assertEqual(resolve_image_url("uploads/a.jpg"), "/static/uploads/a.jpg")
+        self.assertEqual(
+            resolve_image_url("https://res.cloudinary.com/demo/image/upload/a.jpg"),
+            "https://res.cloudinary.com/demo/image/upload/a.jpg",
         )
 
 
@@ -134,6 +146,29 @@ class FastApiIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(msg.status_code, 200)
         self.assertIn("Preciso de um orçamento no Parque Dez.", msg.text)
+
+
+
+    def test_professional_avatar_upload(self):
+        self.client.post(
+            "/entrar",
+            data={"email": "carlos@ondetem.local", "password": "Demo123!"},
+            follow_redirects=False,
+        )
+        panel = self.client.get("/painel")
+        self.assertEqual(panel.status_code, 200)
+        self.assertIn("Foto de perfil", panel.text)
+        csrf = re.search(r'name="csrf" value="([^"]+)"', panel.text).group(1)
+
+        buf = io.BytesIO()
+        Image.new("RGB", (600, 400), color=(19, 60, 85)).save(buf, format="JPEG")
+        resp = self.client.post(
+            "/perfil/foto",
+            data={"csrf": csrf},
+            files={"avatar": ("foto.jpg", buf.getvalue(), "image/jpeg")},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 303)
 
 
 if __name__ == "__main__":

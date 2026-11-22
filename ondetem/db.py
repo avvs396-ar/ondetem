@@ -152,6 +152,7 @@ POSTGRES_SCHEMA = [
         experience TEXT NOT NULL DEFAULT '',
         price_text TEXT NOT NULL DEFAULT '',
         whatsapp TEXT NOT NULL DEFAULT '',
+        avatar_url TEXT NOT NULL DEFAULT '',
         response_time TEXT NOT NULL DEFAULT 'Responde em até 1 hora',
         verified INTEGER NOT NULL DEFAULT 0,
         available INTEGER NOT NULL DEFAULT 1,
@@ -221,6 +222,12 @@ def init_database(db_path: Path | None = None, database_url: str | None = None) 
         statements = POSTGRES_SCHEMA if db.is_postgres else SQLITE_SCHEMA
         for stmt in statements:
             db.execute(stmt)
+        if db.is_postgres:
+            db.execute("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS avatar_url TEXT NOT NULL DEFAULT ''")
+        else:
+            cols = {row["name"] for row in db.fetchall("PRAGMA table_info(professionals)")}
+            if "avatar_url" not in cols:
+                db.execute("ALTER TABLE professionals ADD COLUMN avatar_url TEXT NOT NULL DEFAULT ''")
         if db.fetchone("SELECT 1 AS ok FROM users LIMIT 1"):
             return
         _seed_demo_data(db)

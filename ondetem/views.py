@@ -6,6 +6,7 @@ import sqlite3
 from urllib.parse import urlencode
 
 from ondetem.config import CATEGORIES, NEIGHBORHOODS, READ_ONLY_DEMO, RESPONSE_TIMES
+from ondetem.storage import resolve_image_url
 from ondetem.security import (
     esc,
     format_manaus_date,
@@ -57,7 +58,10 @@ def select_options(values, selected: str = "", initial: str | None = None) -> st
     )
 
 
-def avatar(name: str, size: str = "") -> str:
+def avatar(name: str, size: str = "", photo_url: str = "") -> str:
+    if photo_url:
+        src = resolve_image_url(photo_url)
+        return f'<img class="avatar avatar-photo {size}" src="{esc(src)}" alt="Foto de {esc(name)}" loading="lazy">'
     initials = "".join(part[0] for part in name.split()[:2]).upper() or "OT"
     return f'<span class="avatar {size}" aria-hidden="true">{esc(initials)}</span>'
 
@@ -113,7 +117,7 @@ def professional_card(pro) -> str:
         </div>
       </div>
       <div class="pro-person">
-        {avatar(pro['name'])}
+        {avatar(pro['name'], '', pro.get('avatar_url', '') if isinstance(pro, dict) else (pro['avatar_url'] if 'avatar_url' in pro.keys() else ''))}
         <div>
           <h3><a href="/perfil/{pro['user_id']}">{esc(pro['name'])}</a></h3>
           <p>{esc(pro['category'])}</p>
@@ -515,8 +519,8 @@ def profile_view(db: sqlite3.Connection, pro, user) -> str:
         </div>"""
 
     gallery = "".join(
-        f"""<figure class="work" data-lightbox-src="/static/{esc(w['image'])}" data-lightbox-text="{esc(w['caption'])}" tabindex="0" role="button" aria-label="Ampliar foto: {esc(w['caption'])}">
-              <img src="/static/{esc(w['image'])}" alt="{esc(w['caption'])}" loading="lazy">
+        f"""<figure class="work" data-lightbox-src="{esc(resolve_image_url(w['image']))}" data-lightbox-text="{esc(w['caption'])}" tabindex="0" role="button" aria-label="Ampliar foto: {esc(w['caption'])}">
+              <img src="{esc(resolve_image_url(w['image']))}" alt="{esc(w['caption'])}" loading="lazy">
               <figcaption>{esc(w['caption'])}</figcaption>
             </figure>"""
         for w in works
@@ -607,7 +611,7 @@ def profile_view(db: sqlite3.Connection, pro, user) -> str:
     <div class="container profile">
       <div class="profile-main">
         <div class="profile-title">
-          {avatar(pro['name'], 'large')}
+          {avatar(pro['name'], 'large', pro.get('avatar_url', '') if isinstance(pro, dict) else (pro['avatar_url'] if 'avatar_url' in pro.keys() else ''))}
           <div>
             <div class="profile-badges">
               <span class="eyebrow">{esc(pro['category'])}</span>
@@ -756,7 +760,7 @@ def dashboard_view(db: sqlite3.Connection, user, unread: int) -> str:
     csrf = esc(user["csrf"])
     gallery = "".join(
         f"""<figure class="work work-manage">
-              <img src="/static/{esc(w['image'])}" alt="{esc(w['caption'])}" loading="lazy">
+              <img src="{esc(resolve_image_url(w['image']))}" alt="{esc(w['caption'])}" loading="lazy">
               <figcaption>
                 <span>{esc(w['caption'])}</span>
                 <form action="/portfolio/remover/{w['id']}" method="post" data-confirm="Remover esta foto do portfólio?">
@@ -827,6 +831,20 @@ def dashboard_view(db: sqlite3.Connection, user, unread: int) -> str:
       </div>
 
       <div>
+        <div class="panel">
+          <h2>Foto de perfil</h2>
+          <div class="avatar-upload-row">
+            {avatar(user['name'], 'large', pro['avatar_url'] if 'avatar_url' in pro.keys() else '')}
+            <form class="stack-form" action="/perfil/foto" method="post" enctype="multipart/form-data">
+              <input type="hidden" name="csrf" value="{csrf}">
+              <label>Escolha uma foto nítida do seu rosto (JPG, PNG ou WEBP)
+                <input type="file" name="avatar" accept="image/jpeg,image/png,image/webp" required>
+              </label>
+              <button class="button small" type="submit">Atualizar foto de perfil</button>
+            </form>
+          </div>
+        </div>
+
         <div class="panel">
           <h2>Portfólio de trabalhos ({len(works)}/12)</h2>
           <p>Fotos reais de serviços concluídos aumentam a confiança dos clientes.</p>
