@@ -1,3 +1,3 @@
-"""Pacote principal da plataforma OndeTem (FastAPI + PostgreSQL + Cloudinary + Admin + PWA + SMTP)."""
+"""Pacote principal da plataforma OndeTem (FastAPI + PostgreSQL + Cloudinary + Admin + PWA + Brevo/Resend)."""
 
-__version__ = "3.5.1"
+__version__ = "3.5.2"

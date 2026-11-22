@@ -1,4 +1,4 @@
-"""Envio transacional de e-mails: SMTP (Gmail/qualquer provedor), Resend API ou console local."""
+"""Envio transacional de e-mails via HTTPS (Brevo API / Resend API), SMTP ou console local."""
 
 from __future__ import annotations
 
@@ -26,16 +26,88 @@ def _smtp_config() -> tuple[str, int, str, str, str]:
 
 
 def mailer_backend_name() -> str:
+    if os.environ.get("BREVO_API_KEY", "").strip():
+        return "brevo"
+    if os.environ.get("RESEND_API_KEY", "").strip():
+        return "resend"
     _, _, user, password, _ = _smtp_config()
     if user and password:
         return "smtp"
-    if os.environ.get("RESEND_API_KEY", "").strip():
-        return "resend"
     return "console"
 
 
 def _send_email(to_email: str, subject: str, html_body: str, plain_body: str) -> bool:
-    """Envia e-mail priorizando SMTP (Gmail), depois Resend, depois console local."""
+    """Prioriza APIs HTTPS (Brevo -> Resend) que nunca são bloqueadas pelo Render Free."""
+    # 1. Brevo HTTPS API (300 e-mails/dia grátis, envia para qualquer e-mail sem domínio pago)
+    brevo_key = os.environ.get("BREVO_API_KEY", "").strip()
+    if brevo_key:
+        sender_email = (
+            os.environ.get("BREVO_SENDER_EMAIL", "").strip()
+            or os.environ.get("SMTP_USER", "").strip()
+        )
+        sender_name = os.environ.get("BREVO_SENDER_NAME", "OndeTem Manaus").strip()
+        payload = json.dumps(
+            {
+                "sender": {"name": sender_name, "email": sender_email},
+                "to": [{"email": to_email}],
+                "subject": subject,
+                "htmlContent": html_body,
+                "textContent": plain_body,
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.brevo.com/v3/smtp/email",
+            data=payload,
+            headers={
+                "api-key": brevo_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "OndeTem/3.5.2",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                print(f"[OndeTem Mailer - Brevo] E-mail enviado para {to_email} (HTTP {resp.status})")
+                return 200 <= resp.status < 300
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            print(f"[OndeTem Mailer - ERRO Brevo {exc.code}] {detail}")
+            return False
+        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+            print(f"[OndeTem Mailer - ERRO Brevo] {exc}")
+            return False
+
+    # 2. Resend HTTPS API
+    resend_key = os.environ.get("RESEND_API_KEY", "").strip()
+    if resend_key:
+        sender = os.environ.get("MAIL_FROM", "OndeTem Manaus <onboarding@resend.dev>").strip()
+        payload = json.dumps(
+            {"from": sender, "to": [to_email], "subject": subject, "html": html_body}
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.resend.com/emails",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {resend_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "OndeTem/3.5.2",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                print(f"[OndeTem Mailer - Resend] E-mail enviado para {to_email} (HTTP {resp.status})")
+                return 200 <= resp.status < 300
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            print(f"[OndeTem Mailer - ERRO Resend {exc.code}] {detail}")
+            return False
+        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+            print(f"[OndeTem Mailer - ERRO Resend] {exc}")
+            return False
+
+    # 3. SMTP (para VPS / uso local onde portas 465/587 são liberadas)
     host, port, user, password, smtp_sender = _smtp_config()
     if user and password:
         msg = EmailMessage()
@@ -55,37 +127,10 @@ def _send_email(to_email: str, subject: str, html_body: str, plain_body: str) ->
                     server.starttls(context=ctx)
                     server.login(user, password)
                     server.send_message(msg)
-            print(f"[OndeTem Mailer - SMTP] E-mail enviado com sucesso para {to_email}")
+            print(f"[OndeTem Mailer - SMTP] E-mail enviado para {to_email}")
             return True
         except Exception as exc:
             print(f"[OndeTem Mailer - ERRO SMTP] Falha ao enviar para {to_email}: {exc}")
-            return False
-
-    api_key = os.environ.get("RESEND_API_KEY", "").strip()
-    if api_key:
-        sender = os.environ.get("MAIL_FROM", "OndeTem Manaus <onboarding@resend.dev>").strip()
-        payload = json.dumps(
-            {"from": sender, "to": [to_email], "subject": subject, "html": html_body}
-        ).encode("utf-8")
-        req = urllib.request.Request(
-            "https://api.resend.com/emails",
-            data=payload,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "User-Agent": "OndeTem/3.5.1",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                return 200 <= resp.status < 300
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            print(f"[OndeTem Mailer - ERRO Resend {exc.code}] {detail}")
-            return False
-        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-            print(f"[OndeTem Mailer - ERRO Resend] {exc}")
             return False
 
     print(f"[OndeTem Mailer - DEV] Para: {to_email} | Assunto: {subject}\n{plain_body}")

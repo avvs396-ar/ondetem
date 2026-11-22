@@ -306,7 +306,7 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
 
     # ----------------------------- API JSON -----------------------------
 
-    @app.get("/api/health", tags=["Sistema"])
+    @app.api_route("/api/health", methods=["GET", "HEAD"], tags=["Sistema"])
     def api_health():
         with open_db() as db:
             pros = int(db.scalar("SELECT COUNT(*) FROM professionals", default=0))
