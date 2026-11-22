@@ -153,6 +153,7 @@ POSTGRES_SCHEMA = [
         price_text TEXT NOT NULL DEFAULT '',
         whatsapp TEXT NOT NULL DEFAULT '',
         avatar_url TEXT NOT NULL DEFAULT '',
+        whatsapp_clicks INTEGER NOT NULL DEFAULT 0,
         response_time TEXT NOT NULL DEFAULT 'Responde em até 1 hora',
         verified INTEGER NOT NULL DEFAULT 0,
         available INTEGER NOT NULL DEFAULT 1,
@@ -215,6 +216,14 @@ POSTGRES_SCHEMA = [
         used_at TEXT
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS click_events (
+        id SERIAL PRIMARY KEY,
+        professional_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        channel TEXT NOT NULL DEFAULT 'whatsapp',
+        created_at TEXT NOT NULL
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_prof_cat_neigh ON professionals(category, neighborhood)",
     "CREATE INDEX IF NOT EXISTS idx_reviews_pro ON reviews(professional_id)",
     "CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id)",
@@ -232,10 +241,13 @@ def init_database(db_path: Path | None = None, database_url: str | None = None) 
             db.execute(stmt)
         if db.is_postgres:
             db.execute("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS avatar_url TEXT NOT NULL DEFAULT ''")
+            db.execute("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS whatsapp_clicks INTEGER NOT NULL DEFAULT 0")
         else:
             cols = {row["name"] for row in db.fetchall("PRAGMA table_info(professionals)")}
             if "avatar_url" not in cols:
                 db.execute("ALTER TABLE professionals ADD COLUMN avatar_url TEXT NOT NULL DEFAULT ''")
+            if "whatsapp_clicks" not in cols:
+                db.execute("ALTER TABLE professionals ADD COLUMN whatsapp_clicks INTEGER NOT NULL DEFAULT 0")
         if db.fetchone("SELECT 1 AS ok FROM users LIMIT 1"):
             return
         _seed_demo_data(db)

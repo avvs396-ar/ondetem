@@ -154,6 +154,7 @@ def layout_page(
         auth_nav = f"""
           {dashboard}
           <a href="/conversas">Conversas {unread_badge}</a>
+          {('<a href="/admin" class="nav-admin">Admin</a>') if user.get('is_admin') else ''}
           <a href="/conta">Minha conta</a>
           <form class="logout" action="/sair" method="post">
             <input type="hidden" name="csrf" value="{esc(user['csrf'])}">
@@ -557,7 +558,7 @@ def profile_view(db: sqlite3.Connection, pro, user) -> str:
 
     wa_url = whatsapp_link(pro["whatsapp"], pro["name"], pro["category"])
     wa_btn = (
-        f'<a class="button whatsapp wide" href="{esc(wa_url)}" target="_blank" rel="noopener noreferrer">'
+        f'<a class="button whatsapp wide" href="/contato/whatsapp/{pro["user_id"]}" target="_blank" rel="noopener noreferrer">'
         f'{svg_icon("whatsapp", "ico-sm")} Chamar no WhatsApp</a>'
         if wa_url
         else ""
@@ -801,7 +802,7 @@ def dashboard_view(db: sqlite3.Connection, user, unread: int) -> str:
     <div class="container kpi-row">
       <div class="kpi-card"><span>Nota média</span><strong>{float(rev_stats['avg']):.1f} ★</strong></div>
       <div class="kpi-card"><span>Avaliações</span><strong>{int(rev_stats['cnt'])}</strong></div>
-      <div class="kpi-card"><span>Mensagens não lidas</span><strong>{unread}</strong></div>
+      <div class="kpi-card"><span>Cliques no WhatsApp</span><strong>{int(pro['whatsapp_clicks'] or 0)}</strong></div>
       <div class="kpi-card">
         <span>Força do perfil</span>
         <strong>{completeness}%</strong>
@@ -1133,5 +1134,114 @@ def account_view(user, error: str = "") -> str:
           </label>
           <button class="button danger" type="submit">Excluir minha conta permanentemente</button>
         </form>
+      </section>
+    </div>"""
+
+
+def admin_view(user, summary: dict, pros: list, recent_reviews: list, top_neighborhoods: list) -> str:
+    csrf = esc(user["csrf"])
+
+    pro_rows = "".join(
+        f"""<tr>
+              <td>
+                <div class="admin-pro-cell">
+                  {avatar(p['name'], 'tiny', p.get('avatar_url', ''))}
+                  <div>
+                    <a class="text-link" href="/perfil/{p['user_id']}">{esc(p['name'])}</a>
+                    <small>{esc(p['email'])}</small>
+                  </div>
+                </div>
+              </td>
+              <td>{esc(p['category'])}</td>
+              <td>{esc(p['neighborhood'])}</td>
+              <td class="num"><strong>{int(p['whatsapp_clicks'] or 0)}</strong></td>
+              <td class="num">{f"{float(p['rating']):.1f} ★ ({int(p['review_count'])})" if p['review_count'] else '—'}</td>
+              <td>
+                <span class="{'verified-pill' if p['verified'] else 'muted'}">
+                  {'Verificado' if p['verified'] else 'Pendente'}
+                </span>
+              </td>
+              <td>
+                <form action="/admin/verificar/{p['user_id']}" method="post">
+                  <input type="hidden" name="csrf" value="{csrf}">
+                  <button type="submit" class="button small {'secondary' if p['verified'] else ''}">
+                    {'Remover selo' if p['verified'] else 'Aprovar selo'}
+                  </button>
+                </form>
+              </td>
+            </tr>"""
+        for p in pros
+    )
+
+    review_rows = "".join(
+        f"""<article class="review admin-review">
+              <div class="review-top">
+                <div>
+                  <b>{esc(r['client_name'])}</b> <span class="muted">avaliou</span> <b>{esc(r['pro_name'])}</b>
+                  <span class="rating">{'★' * int(r['rating'])}</span>
+                  <small class="muted"> · {esc(format_manaus_date(r['created_at']))}</small>
+                </div>
+                <form action="/admin/avaliacao/remover/{r['id']}" method="post" data-confirm="Remover esta avaliação permanentemente?">
+                  <input type="hidden" name="csrf" value="{csrf}">
+                  <button type="submit" class="trash-btn" title="Remover avaliação" aria-label="Remover avaliação">{svg_icon('trash', 'ico-xs')}</button>
+                </form>
+              </div>
+              <p>{esc(r['comment'])}</p>
+            </article>"""
+        for r in recent_reviews
+    ) or '<p class="muted">Nenhuma avaliação registrada ainda.</p>'
+
+    neigh_pills = "".join(
+        f'<span class="chip">{esc(n["neighborhood"])} · <strong>{int(n["total"])}</strong></span>'
+        for n in top_neighborhoods
+    )
+
+    return f"""
+    <section class="page-hero">
+      <div class="container">
+        <span class="eyebrow">PAINEL ADMINISTRATIVO · ONDETEM</span>
+        <h1>Gestão e Métricas de Manaus</h1>
+        <p>Acompanhe cliques reais no WhatsApp, aprove o selo Verificado e modere avaliações.</p>
+      </div>
+    </section>
+
+    <div class="container kpi-row">
+      <div class="kpi-card"><span>Cliques no WhatsApp</span><strong>{summary['wa_clicks']}</strong><small class="muted">{summary['wa_clicks_7d']} nos últimos 7 dias</small></div>
+      <div class="kpi-card"><span>Profissionais</span><strong>{summary['pros']}</strong><small class="muted">{summary['verified']} verificados</small></div>
+      <div class="kpi-card"><span>Usuários totais</span><strong>{summary['users']}</strong><small class="muted">{summary['conversations']} conversas</small></div>
+      <div class="kpi-card"><span>Avaliações</span><strong>{summary['reviews']}</strong><small class="muted">Média {summary['avg_rating']:.1f} ★</small></div>
+    </div>
+
+    <div class="container admin-wrap">
+      <section class="panel">
+        <div class="admin-head">
+          <div>
+            <h2>Profissionais e Cliques no WhatsApp</h2>
+            <p>Ordenados pelos perfis com maior procura em Manaus.</p>
+          </div>
+          <div class="active-chips">{neigh_pills}</div>
+        </div>
+        <div class="table-scroll">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Profissional</th>
+                <th>Categoria</th>
+                <th>Bairro</th>
+                <th class="num">Cliques WhatsApp</th>
+                <th class="num">Avaliação</th>
+                <th>Selo</th>
+                <th>Ação</th>
+              </tr>
+            </thead>
+            <tbody>{pro_rows}</tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Moderação de avaliações recentes</h2>
+        <p>Remova rapidamente comentários ofensivos ou suspeitos de spam.</p>
+        {review_rows}
       </section>
     </div>"""

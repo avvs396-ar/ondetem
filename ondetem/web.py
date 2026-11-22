@@ -15,7 +15,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from ondetem import __version__
+import os
 from ondetem.config import (
+    ADMIN_EMAILS,
     CATEGORIES,
     MAX_PORTFOLIO_ITEMS,
     NEIGHBORHOODS,
@@ -39,11 +41,13 @@ from ondetem.security import (
     sanitize_avatar,
     sanitize_image,
     token_hash,
+    whatsapp_link,
 )
 from ondetem.mailer import mailer_backend_name, send_password_reset_email
 from ondetem.storage import delete_stored_image, storage_backend_name, upload_image
 from ondetem.views import (
     account_view,
+    admin_view,
     auth_view,
     forgot_password_view,
     privacy_view,
@@ -88,16 +92,27 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
         ensure_db_ready()
         return get_db(db_path=db_path, database_url=database_url)
 
+    def is_admin_email(email: str, db: DBSession) -> bool:
+        env_admins = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
+        admins = env_admins or ADMIN_EMAILS
+        if admins:
+            return email.strip().lower() in admins
+        # Em ambiente local SQLite sem ADMIN_EMAILS configurado, libera a conta demo para teste
+        return (not db.is_postgres) and email.strip().lower() == "cliente@ondetem.local"
+
     def current_user(db: DBSession, request: Request) -> dict[str, Any] | None:
         token = request.cookies.get("session", "")
         if not token:
             return None
-        return db.fetchone(
-            """SELECT u.id, u.name, u.role, s.csrf
+        row = db.fetchone(
+            """SELECT u.id, u.name, u.email, u.role, s.csrf
                FROM sessions s JOIN users u ON u.id = s.user_id
                WHERE s.token_hash = ? AND s.expires_at > ?""",
             (token_hash(token), now_iso()),
         )
+        if row:
+            row["is_admin"] = is_admin_email(str(row["email"]), db)
+        return row
 
     def unread_count(db: DBSession, user: dict | None) -> int:
         if not user:
@@ -793,6 +808,106 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
             resp = RedirectResponse(url="/?msg=" + quote("Sua conta e seus dados foram excluídos permanentemente."), status_code=303)
             resp.delete_cookie("session", path="/")
             return resp
+
+
+    # ------------------- CLIQUES WHATSAPP & PAINEL ADMIN -------------------
+
+    @app.get("/contato/whatsapp/{pro_id}", include_in_schema=False)
+    def action_whatsapp_redirect(pro_id: int):
+        with open_db() as db:
+            pro = get_pro(db, pro_id)
+            if not pro or not pro.get("whatsapp"):
+                return RedirectResponse(url="/buscar", status_code=303)
+            db.execute(
+                "UPDATE professionals SET whatsapp_clicks = COALESCE(whatsapp_clicks, 0) + 1 WHERE user_id = ?",
+                (pro_id,),
+            )
+            db.execute(
+                "INSERT INTO click_events (professional_id, channel, created_at) VALUES (?, 'whatsapp', ?)",
+                (pro_id, now_iso()),
+            )
+            target = whatsapp_link(str(pro["whatsapp"]), str(pro["name"]), str(pro["category"]))
+            return RedirectResponse(url=target, status_code=302)
+
+    @app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
+    def page_admin(request: Request, msg: str = ""):
+        with open_db() as db:
+            user = current_user(db, request)
+            if not user:
+                return RedirectResponse(url="/entrar?" + urlencode({"next": "/admin"}), status_code=303)
+            if not user.get("is_admin"):
+                return HTMLResponse(
+                    layout_page(
+                        "Acesso restrito",
+                        '<section class="container section"><h1>Área restrita ao administrador</h1>'
+                        '<p>Adicione seu e-mail na variável <code>ADMIN_EMAILS</code> no Render para liberar acesso.</p>'
+                        '<a class="button small" href="/">Voltar ao início</a></section>',
+                        user,
+                        unread_count(db, user),
+                    ),
+                    status_code=403,
+                )
+            cutoff_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat(timespec="seconds")
+            summary = {
+                "users": int(db.scalar("SELECT COUNT(*) FROM users", default=0)),
+                "pros": int(db.scalar("SELECT COUNT(*) FROM professionals", default=0)),
+                "verified": int(db.scalar("SELECT COUNT(*) FROM professionals WHERE verified = 1", default=0)),
+                "reviews": int(db.scalar("SELECT COUNT(*) FROM reviews", default=0)),
+                "avg_rating": float(db.scalar("SELECT COALESCE(AVG(rating), 0) FROM reviews", default=0) or 0),
+                "conversations": int(db.scalar("SELECT COUNT(*) FROM conversations", default=0)),
+                "wa_clicks": int(db.scalar("SELECT COALESCE(SUM(whatsapp_clicks), 0) FROM professionals", default=0) or 0),
+                "wa_clicks_7d": int(db.scalar("SELECT COUNT(*) FROM click_events WHERE created_at >= ?", (cutoff_7d,), default=0)),
+            }
+            pros = db.fetchall(
+                """SELECT p.*, u.name, u.email,
+                    (SELECT AVG(rating) FROM reviews r WHERE r.professional_id = p.user_id) AS rating,
+                    (SELECT COUNT(*) FROM reviews r WHERE r.professional_id = p.user_id) AS review_count
+                   FROM professionals p JOIN users u ON u.id = p.user_id
+                   ORDER BY COALESCE(p.whatsapp_clicks, 0) DESC, p.verified DESC, u.name ASC"""
+            )
+            recent_reviews = db.fetchall(
+                """SELECT r.id, r.rating, r.comment, r.created_at,
+                          c.name AS client_name, pr.name AS pro_name
+                   FROM reviews r
+                   JOIN users c ON c.id = r.client_id
+                   JOIN users pr ON pr.id = r.professional_id
+                   ORDER BY r.id DESC LIMIT 20"""
+            )
+            top_neighborhoods = db.fetchall(
+                """SELECT neighborhood, COUNT(*) AS total
+                   FROM professionals GROUP BY neighborhood
+                   ORDER BY total DESC, neighborhood ASC LIMIT 6"""
+            )
+            return layout_page(
+                "Painel Admin",
+                admin_view(user, summary, pros, recent_reviews, top_neighborhoods),
+                user,
+                unread_count(db, user),
+                msg[:180],
+            )
+
+    @app.post("/admin/verificar/{pro_id}", include_in_schema=False)
+    def action_admin_verify(pro_id: int, request: Request, csrf: str = Form("")):
+        with open_db() as db:
+            user = current_user(db, request)
+            if not check_csrf(user, csrf) or not user.get("is_admin"):
+                return HTMLResponse(layout_page("Acesso negado", '<section class="container section"><h1>Acesso negado.</h1></section>'), status_code=403)
+            row = db.fetchone("SELECT verified FROM professionals WHERE user_id = ?", (pro_id,))
+            if not row:
+                return RedirectResponse(url="/admin?msg=" + quote("Profissional não encontrado."), status_code=303)
+            new_val = 0 if row["verified"] else 1
+            db.execute("UPDATE professionals SET verified = ? WHERE user_id = ?", (new_val, pro_id))
+            msg = "Selo Verificado aprovado!" if new_val else "Selo Verificado removido."
+            return RedirectResponse(url="/admin?msg=" + quote(msg), status_code=303)
+
+    @app.post("/admin/avaliacao/remover/{review_id}", include_in_schema=False)
+    def action_admin_delete_review(review_id: int, request: Request, csrf: str = Form("")):
+        with open_db() as db:
+            user = current_user(db, request)
+            if not check_csrf(user, csrf) or not user.get("is_admin"):
+                return HTMLResponse(layout_page("Acesso negado", '<section class="container section"><h1>Acesso negado.</h1></section>'), status_code=403)
+            db.execute("DELETE FROM reviews WHERE id = ?", (review_id,))
+            return RedirectResponse(url="/admin?msg=" + quote("Avaliação removida pela moderação."), status_code=303)
 
     return app
 

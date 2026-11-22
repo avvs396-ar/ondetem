@@ -91,3 +91,10 @@ RESPONSE_TIMES = [
     "Responde em até 1 hora",
     "Responde no mesmo dia",
 ]
+
+# E-mails com acesso ao painel /admin (separados por vírgula no .env ou Render)
+ADMIN_EMAILS: set[str] = {
+    e.strip().lower()
+    for e in os.environ.get("ADMIN_EMAILS", "").split(",")
+    if e.strip()
+}

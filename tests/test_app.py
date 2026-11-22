@@ -246,5 +246,28 @@ class FastApiIntegrationTests(unittest.TestCase):
             self.assertIsNone(gone)
 
 
+
+    def test_whatsapp_click_tracking_and_admin_panel(self):
+        # Clique no WhatsApp redireciona para wa.me e incrementa contador
+        wa = self.client.get("/contato/whatsapp/4", follow_redirects=False)
+        self.assertEqual(wa.status_code, 302)
+        self.assertIn("https://wa.me/55", wa.headers["location"])
+
+        # Login como cliente demo (liberado como admin local em SQLite)
+        self.client.post(
+            "/entrar",
+            data={"email": "cliente@ondetem.local", "password": "Demo123!"},
+            follow_redirects=False,
+        )
+        adm = self.client.get("/admin")
+        self.assertEqual(adm.status_code, 200)
+        self.assertIn("Gestão e Métricas de Manaus", adm.text)
+        csrf = re.search(r'name="csrf" value="([^"]+)"', adm.text).group(1)
+
+        # Alterna selo Verificado do profissional 4
+        tog = self.client.post("/admin/verificar/4", data={"csrf": csrf}, follow_redirects=False)
+        self.assertEqual(tog.status_code, 303)
+
+
 if __name__ == "__main__":
     unittest.main()
