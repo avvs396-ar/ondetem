@@ -183,6 +183,13 @@ def layout_page(
   <title>{esc(title)} · OndeTem Manaus</title>
   <meta name="description" content="Encontre profissionais autônomos de manutenção e reparos avaliados em Manaus.">
   <meta name="theme-color" content="#133C55">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="OndeTem Manaus · Profissionais autônomos no seu bairro">
+  <meta property="og:description" content="Encontre eletricistas, encanadores, técnicos de ar-condicionado e outros profissionais avaliados em Manaus.">
+  <meta property="og:image" content="https://ondetem-manaus.onrender.com/static/og-ondetem.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/app.js" defer></script>
 </head>
