@@ -40,9 +40,15 @@ from ondetem.security import (
     sanitize_image,
     token_hash,
 )
+from ondetem.mailer import mailer_backend_name, send_password_reset_email
 from ondetem.storage import delete_stored_image, storage_backend_name, upload_image
 from ondetem.views import (
+    account_view,
     auth_view,
+    forgot_password_view,
+    privacy_view,
+    reset_password_view,
+    terms_view,
     chat_view,
     conversations_view,
     dashboard_view,
@@ -266,7 +272,7 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
         with open_db() as db:
             pros = int(db.scalar("SELECT COUNT(*) FROM professionals", default=0))
             return JSONResponse(
-                {"status": "ok", "version": __version__, "database": db.engine_name, "storage": storage_backend_name(), "professionals": pros}
+                {"status": "ok", "version": __version__, "database": db.engine_name, "storage": storage_backend_name(), "mailer": mailer_backend_name(), "professionals": pros}
             )
 
     @app.get("/api/profissionais", tags=["Profissionais"])
@@ -344,6 +350,7 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
         category: str = Form(""),
         neighborhood: str = Form(""),
         whatsapp: str = Form(""),
+        accept_terms: str = Form(""),
     ):
         client_ip = request.client.host if request.client else "local"
         if not AUTH_LIMITER.allow(f"signup:{client_ip}"):
@@ -354,6 +361,11 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
         name_c = name.strip()[:80]
         email_c = email.strip().lower()[:255]
         wa_clean = clean_whatsapp(whatsapp)
+        if accept_terms != "1":
+            return HTMLResponse(
+                layout_page("Cadastro", auth_view(role=role, error="Você precisa aceitar os Termos de Uso e a Política de Privacidade (LGPD).")),
+                status_code=400,
+            )
         if (
             not name_c
             or "@" not in email_c
@@ -649,6 +661,138 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
                 (user["id"], pro_id, rating, clean_comment, now_iso()),
             )
             return RedirectResponse(url=f"/perfil/{pro_id}?msg=" + quote("Avaliação publicada com sucesso!"), status_code=303)
+
+
+    # ------------------- RECUPERAÇÃO DE SENHA & LGPD -------------------
+
+    @app.get("/esqueci-senha", response_class=HTMLResponse, include_in_schema=False)
+    def page_forgot_password(request: Request, enviado: str = ""):
+        with open_db() as db:
+            user = current_user(db, request)
+            return layout_page("Esqueci minha senha", forgot_password_view(sent=(enviado == "1")), user, unread_count(db, user))
+
+    @app.post("/esqueci-senha", include_in_schema=False)
+    def action_forgot_password(request: Request, email: str = Form("")):
+        client_ip = request.client.host if request.client else "local"
+        if not AUTH_LIMITER.allow(f"forgot:{client_ip}"):
+            return HTMLResponse(
+                layout_page("Esqueci minha senha", forgot_password_view(error="Muitas solicitações. Aguarde 1 minuto e tente novamente.")),
+                status_code=429,
+            )
+        clean_email = email.strip().lower()[:255]
+        if "@" not in clean_email:
+            return HTMLResponse(
+                layout_page("Esqueci minha senha", forgot_password_view(error="Informe um e-mail válido.")),
+                status_code=400,
+            )
+        with open_db() as db:
+            row = db.fetchone("SELECT id, name, email FROM users WHERE email = ?", (clean_email,))
+            if row:
+                raw_token = secrets.token_urlsafe(32)
+                expiry = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(timespec="seconds")
+                db.execute("DELETE FROM password_resets WHERE user_id = ? OR expires_at <= ?", (row["id"], now_iso()))
+                db.execute(
+                    "INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
+                    (token_hash(raw_token), row["id"], expiry),
+                )
+                base_url = str(request.base_url).rstrip("/")
+                reset_url = f"{base_url}/redefinir-senha?token={quote(raw_token)}"
+                send_password_reset_email(str(row["email"]), str(row["name"]), reset_url)
+        return RedirectResponse(url="/esqueci-senha?enviado=1", status_code=303)
+
+    @app.get("/redefinir-senha", response_class=HTMLResponse, include_in_schema=False)
+    def page_reset_password(request: Request, token: str = ""):
+        with open_db() as db:
+            user = current_user(db, request)
+            rec = (
+                db.fetchone(
+                    "SELECT * FROM password_resets WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?",
+                    (token_hash(token), now_iso()),
+                )
+                if token
+                else None
+            )
+            return layout_page(
+                "Redefinir senha",
+                reset_password_view(token=token, invalid=(rec is None)),
+                user,
+                unread_count(db, user),
+            )
+
+    @app.post("/redefinir-senha", include_in_schema=False)
+    def action_reset_password(
+        request: Request,
+        token: str = Form(""),
+        password: str = Form(""),
+        confirm_password: str = Form(""),
+    ):
+        if len(password) < 8:
+            return HTMLResponse(
+                layout_page("Redefinir senha", reset_password_view(token=token, error="A nova senha deve ter no mínimo 8 caracteres.")),
+                status_code=400,
+            )
+        if password != confirm_password:
+            return HTMLResponse(
+                layout_page("Redefinir senha", reset_password_view(token=token, error="As senhas digitadas não conferem.")),
+                status_code=400,
+            )
+        with open_db() as db:
+            rec = db.fetchone(
+                "SELECT * FROM password_resets WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?",
+                (token_hash(token), now_iso()),
+            )
+            if not rec:
+                return HTMLResponse(
+                    layout_page("Redefinir senha", reset_password_view(invalid=True)),
+                    status_code=400,
+                )
+            db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash(password), rec["user_id"]))
+            db.execute("UPDATE password_resets SET used_at = ? WHERE token_hash = ?", (now_iso(), rec["token_hash"]))
+            db.execute("DELETE FROM sessions WHERE user_id = ?", (rec["user_id"],))
+        return RedirectResponse(url="/entrar?msg=" + quote("Senha redefinida com sucesso! Entre com sua nova senha."), status_code=303)
+
+    @app.get("/termos", response_class=HTMLResponse, include_in_schema=False)
+    def page_terms(request: Request):
+        with open_db() as db:
+            user = current_user(db, request)
+            return layout_page("Termos de Uso", terms_view(), user, unread_count(db, user))
+
+    @app.get("/privacidade", response_class=HTMLResponse, include_in_schema=False)
+    def page_privacy(request: Request):
+        with open_db() as db:
+            user = current_user(db, request)
+            return layout_page("Política de Privacidade (LGPD)", privacy_view(), user, unread_count(db, user))
+
+    @app.get("/conta", response_class=HTMLResponse, include_in_schema=False)
+    def page_account(request: Request, msg: str = ""):
+        with open_db() as db:
+            user = current_user(db, request)
+            if not user:
+                return RedirectResponse(url="/entrar?" + urlencode({"next": "/conta"}), status_code=303)
+            return layout_page("Minha conta", account_view(user), user, unread_count(db, user), msg[:180])
+
+    @app.post("/conta/excluir", include_in_schema=False)
+    def action_delete_account(request: Request, csrf: str = Form(""), password: str = Form("")):
+        with open_db() as db:
+            user = current_user(db, request)
+            if not check_csrf(user, csrf):
+                return HTMLResponse(layout_page("Acesso negado", '<section class="container section"><h1>Sessão expirada.</h1></section>'), status_code=403)
+            row = db.fetchone("SELECT password_hash FROM users WHERE id = ?", (user["id"],))
+            if not row or not password_matches(password, row["password_hash"]):
+                return HTMLResponse(
+                    layout_page("Minha conta", account_view(user, error="Senha incorreta. Nenhum dado foi apagado."), user, unread_count(db, user)),
+                    status_code=401,
+                )
+            works = db.fetchall("SELECT image FROM works WHERE professional_id = ?", (user["id"],))
+            pro = db.fetchone("SELECT avatar_url FROM professionals WHERE user_id = ?", (user["id"],))
+            for w in works:
+                delete_stored_image(str(w["image"]))
+            if pro and pro.get("avatar_url"):
+                delete_stored_image(str(pro["avatar_url"]))
+            db.execute("DELETE FROM users WHERE id = ?", (user["id"],))
+            resp = RedirectResponse(url="/?msg=" + quote("Sua conta e seus dados foram excluídos permanentemente."), status_code=303)
+            resp.delete_cookie("session", path="/")
+            return resp
 
     return app
 

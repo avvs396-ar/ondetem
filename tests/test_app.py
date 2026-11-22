@@ -171,5 +171,80 @@ class FastApiIntegrationTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 303)
 
 
+
+    def test_terms_and_privacy_pages(self):
+        t = self.client.get("/termos")
+        self.assertEqual(t.status_code, 200)
+        self.assertIn("Termos de Uso", t.text)
+        p = self.client.get("/privacidade")
+        self.assertEqual(p.status_code, 200)
+        self.assertIn("LGPD", p.text)
+
+    def test_signup_requires_terms_and_lgpd_delete_account(self):
+        # Sem aceitar termos deve dar 400
+        bad = self.client.post(
+            "/cadastro",
+            data={"name": "Teste LGPD", "email": "lgpd@ondetem.local", "password": "SenhaForte123!", "role": "cliente"},
+        )
+        self.assertEqual(bad.status_code, 400)
+
+        # Aceitando termos cria conta e faz login
+        ok = self.client.post(
+            "/cadastro",
+            data={
+                "name": "Teste LGPD",
+                "email": "lgpd@ondetem.local",
+                "password": "SenhaForte123!",
+                "role": "cliente",
+                "accept_terms": "1",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(ok.status_code, 303)
+
+        # Solicita redefinição de senha e testa token real
+        forgot = self.client.post("/esqueci-senha", data={"email": "lgpd@ondetem.local"}, follow_redirects=False)
+        self.assertEqual(forgot.status_code, 303)
+
+        # Cria token controlado para testar redefinição fim a fim
+        from datetime import datetime, timedelta, timezone
+        from ondetem.db import get_db
+        from ondetem.security import token_hash
+        with get_db(db_path=self.db_path) as db:
+            uid = db.scalar("SELECT id FROM users WHERE email = ?", ("lgpd@ondetem.local",))
+            exp = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(timespec="seconds")
+            db.execute(
+                "INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
+                (token_hash("tok_teste_123"), uid, exp),
+            )
+        reset = self.client.post(
+            "/redefinir-senha",
+            data={"token": "tok_teste_123", "password": "NovaSenha456!", "confirm_password": "NovaSenha456!"},
+            follow_redirects=False,
+        )
+        self.assertEqual(reset.status_code, 303)
+
+        # Entra com a nova senha e exclui a conta (LGPD)
+        relogin = self.client.post(
+            "/entrar",
+            data={"email": "lgpd@ondetem.local", "password": "NovaSenha456!"},
+            follow_redirects=False,
+        )
+        self.assertEqual(relogin.status_code, 303)
+        conta = self.client.get("/conta")
+        self.assertEqual(conta.status_code, 200)
+        csrf = re.search(r'name="csrf" value="([^"]+)"', conta.text).group(1)
+
+        deleted = self.client.post(
+            "/conta/excluir",
+            data={"csrf": csrf, "password": "NovaSenha456!"},
+            follow_redirects=False,
+        )
+        self.assertEqual(deleted.status_code, 303)
+        with get_db(db_path=self.db_path) as db:
+            gone = db.fetchone("SELECT id FROM users WHERE email = ?", ("lgpd@ondetem.local",))
+            self.assertIsNone(gone)
+
+
 if __name__ == "__main__":
     unittest.main()

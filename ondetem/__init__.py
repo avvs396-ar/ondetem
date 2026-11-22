@@ -1,3 +1,3 @@
-"""Pacote principal da plataforma OndeTem (FastAPI + PostgreSQL + Cloudinary)."""
+"""Pacote principal da plataforma OndeTem (FastAPI + PostgreSQL + Cloudinary + LGPD)."""
 
-__version__ = "3.1.0"
+__version__ = "3.2.0"

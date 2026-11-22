@@ -1825,3 +1825,79 @@ textarea {
     align-items: start;
   }
 }
+
+.auth-forgot {
+  text-align: right;
+  margin-top: -6px;
+}
+
+.auth-forgot a {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--blue-dark);
+}
+
+.auth-forgot a:hover {
+  color: var(--orange);
+}
+
+.terms-check {
+  align-items: flex-start !important;
+  font-size: 0.8rem !important;
+  font-weight: 500 !important;
+  color: var(--ink-soft) !important;
+}
+
+.terms-check a {
+  color: var(--blue-dark);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.legal-page {
+  padding-block: 36px 80px;
+}
+
+.legal-page h2 {
+  font-size: 1.2rem;
+  margin: 22px 0 8px;
+}
+
+.legal-page h2:first-child {
+  margin-top: 0;
+}
+
+.legal-box.ok-box {
+  background: var(--ok-bg);
+  border: 1px solid #bfe6d2;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.legal-box.ok-box h3 {
+  color: var(--ok-text);
+  margin-bottom: 6px;
+}
+
+.danger-panel {
+  border-color: #f3c6c2;
+}
+
+.button.danger {
+  background: #b93226;
+  box-shadow: 0 6px 14px rgba(185, 50, 38, 0.2);
+}
+
+.button.danger:hover {
+  background: #96251b;
+}
+
+.footer-links a {
+  color: var(--blue-dark);
+  font-weight: 650;
+}
+
+.footer-links a:hover {
+  color: var(--orange);
+}

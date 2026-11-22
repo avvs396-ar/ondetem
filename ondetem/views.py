@@ -154,6 +154,7 @@ def layout_page(
         auth_nav = f"""
           {dashboard}
           <a href="/conversas">Conversas {unread_badge}</a>
+          <a href="/conta">Minha conta</a>
           <form class="logout" action="/sair" method="post">
             <input type="hidden" name="csrf" value="{esc(user['csrf'])}">
             <button type="submit">Sair</button>
@@ -220,8 +221,12 @@ def layout_page(
         <p>Conectando moradores de Manaus a profissionais autônomos avaliados no seu bairro.</p>
       </div>
       <div class="footer-meta">
-        <p>Protótipo de Engenharia &amp; IHC · Versão 2.0</p>
-        <p>Perfis iniciais são demonstrativos. Use credenciais de teste para explorar todos os fluxos.</p>
+        <p class="footer-links">
+          <a href="/termos">Termos de Uso</a> ·
+          <a href="/privacidade">Política de Privacidade (LGPD)</a>
+          {(' · <a href="/conta">Minha conta e dados</a>') if user else ''}
+        </p>
+        <p>OndeTem Manaus · Plataforma de Serviços Autônomos</p>
       </div>
     </div>
   </footer>
@@ -689,6 +694,7 @@ def auth_view(role: str = "cliente", login: bool = False, next_path: str = "", e
           <label>Senha
             <input type="password" name="password" id="login-password" autocomplete="current-password" required>
           </label>
+          <div class="auth-forgot"><a href="/esqueci-senha">Esqueci minha senha</a></div>
           <input type="hidden" name="next" value="{esc(next_path)}">
           <button class="button wide" type="submit">Entrar</button>
           <div class="demo-box">
@@ -730,6 +736,10 @@ def auth_view(role: str = "cliente", login: bool = False, next_path: str = "", e
             <input type="password" name="password" minlength="8" autocomplete="new-password" required>
           </label>
           {extra}
+          <label class="checkbox terms-check">
+            <input type="checkbox" name="accept_terms" value="1" required>
+            <span>Li e concordo com os <a href="/termos" target="_blank">Termos de Uso</a> e a <a href="/privacidade" target="_blank">Política de Privacidade (LGPD)</a>.</span>
+          </label>
           <button class="button wide" type="submit">Criar conta</button>
           <p class="auth-switch">Já tem conta? <a href="/entrar">Entrar agora</a></p>"""
 
@@ -972,4 +982,156 @@ def chat_view(db: sqlite3.Connection, user, conversation) -> str:
         <textarea id="message" name="body" maxlength="1500" required placeholder="Escreva sua mensagem... (Ctrl+Enter para enviar)"></textarea>
         <button class="button" type="submit">Enviar ↗</button>
       </form>
+    </div>"""
+
+
+def forgot_password_view(error: str = "", sent: bool = False) -> str:
+    error_html = f'<p class="form-error" role="alert">{esc(error)}</p>' if error else ""
+    if sent:
+        body = """
+        <div class="legal-box ok-box">
+          <h3>Verifique sua caixa de entrada</h3>
+          <p>Se existir uma conta cadastrada com este e-mail, enviamos um link seguro para redefinir sua senha. O link expira em <strong>30 minutos</strong>.</p>
+          <p class="hint">Não encontrou? Confira também a pasta de Spam ou Lixo Eletrônico.</p>
+        </div>
+        <p class="auth-switch"><a href="/entrar">← Voltar para o login</a></p>"""
+    else:
+        body = f"""
+        {error_html}
+        <form class="stack-form" method="post" action="/esqueci-senha">
+          <label>E-mail cadastrado
+            <input type="email" name="email" autocomplete="email" required placeholder="voce@exemplo.com">
+          </label>
+          <button class="button wide" type="submit">Enviar link de redefinição</button>
+          <p class="auth-switch"><a href="/entrar">← Voltar para o login</a></p>
+        </form>"""
+    return f"""
+    <section class="auth-bg">
+      <div class="auth-card">
+        <a href="/" class="brand"><span class="brand-pin">●</span>Onde<span>Tem</span></a>
+        <span class="eyebrow">RECUPERAÇÃO DE ACESSO</span>
+        <h1>Esqueceu sua senha?</h1>
+        <p>Informe seu e-mail para receber um link seguro de redefinição.</p>
+        {body}
+      </div>
+    </section>"""
+
+
+def reset_password_view(token: str = "", error: str = "", invalid: bool = False) -> str:
+    error_html = f'<p class="form-error" role="alert">{esc(error)}</p>' if error else ""
+    if invalid:
+        body = """
+        <p class="form-error" role="alert">Este link de redefinição é inválido, já foi usado ou expirou.</p>
+        <a class="button wide" href="/esqueci-senha">Solicitar novo link</a>"""
+    else:
+        body = f"""
+        {error_html}
+        <form class="stack-form" method="post" action="/redefinir-senha">
+          <input type="hidden" name="token" value="{esc(token)}">
+          <label>Nova senha (mínimo de 8 caracteres)
+            <input type="password" name="password" minlength="8" autocomplete="new-password" required>
+          </label>
+          <label>Confirmar nova senha
+            <input type="password" name="confirm_password" minlength="8" autocomplete="new-password" required>
+          </label>
+          <button class="button wide" type="submit">Salvar nova senha</button>
+        </form>"""
+    return f"""
+    <section class="auth-bg">
+      <div class="auth-card">
+        <a href="/" class="brand"><span class="brand-pin">●</span>Onde<span>Tem</span></a>
+        <span class="eyebrow">NOVA SENHA</span>
+        <h1>Criar nova senha</h1>
+        <p>Escolha uma senha forte que você não use em outros sites.</p>
+        {body}
+      </div>
+    </section>"""
+
+
+def terms_view() -> str:
+    return """
+    <section class="page-hero">
+      <div class="container">
+        <span class="eyebrow">DOCUMENTO LEGAL</span>
+        <h1>Termos de Uso</h1>
+        <p>Última atualização: Novembro de 2026 · OndeTem Manaus</p>
+      </div>
+    </section>
+    <article class="container narrow legal-page">
+      <section class="panel">
+        <h2>1. O que é o OndeTem</h2>
+        <p>O <strong>OndeTem</strong> é uma plataforma digital que conecta moradores de Manaus (AM) a profissionais autônomos de manutenção e reparos residenciais. O OndeTem atua exclusivamente como canal de descoberta e contato, não sendo empregador, sócio ou intermediário financeiro dos serviços prestados.</p>
+
+        <h2>2. Responsabilidade pelos serviços</h2>
+        <p>Orçamentos, prazos, formas de pagamento, garantias e execução do serviço são combinados diretamente entre cliente e profissional (via WhatsApp ou chat interno). Recomendamos sempre solicitar orçamento detalhado antes do início de qualquer trabalho.</p>
+
+        <h2>3. Cadastro e conduta</h2>
+        <p>Ao criar uma conta, você declara fornecer informações verdadeiras e manter sua senha em sigilo. É proibido publicar conteúdo ofensivo, fotos de terceiros sem autorização, avaliações falsas ou qualquer tentativa de fraude. Contas que violarem estas regras poderão ser suspensas ou removidas.</p>
+
+        <h2>4. Avaliações e selo Verificado</h2>
+        <p>As avaliações refletem a experiência individual de clientes cadastrados. O selo <strong>Verificado</strong> indica que o perfil passou por conferência básica na plataforma, mas não substitui os cuidados normais na contratação.</p>
+
+        <h2>5. Encerramento de conta</h2>
+        <p>Você pode solicitar a exclusão definitiva da sua conta e dos seus dados a qualquer momento na página <a class="text-link" href="/conta">Minha conta</a>, conforme nossa <a class="text-link" href="/privacidade">Política de Privacidade (LGPD)</a>.</p>
+      </section>
+    </article>"""
+
+
+def privacy_view() -> str:
+    return """
+    <section class="page-hero">
+      <div class="container">
+        <span class="eyebrow">LGPD · LEI Nº 13.709/2018</span>
+        <h1>Política de Privacidade</h1>
+        <p>Transparência sobre como coletamos, protegemos e apagamos seus dados no OndeTem.</p>
+      </div>
+    </section>
+    <article class="container narrow legal-page">
+      <section class="panel">
+        <h2>1. Dados que coletamos</h2>
+        <p>Coletamos apenas o necessário para o funcionamento da plataforma: <strong>nome, e-mail, senha criptografada</strong> e tipo de conta (cliente ou profissional). Para profissionais, exibimos publicamente a categoria, bairro de atuação em Manaus, descrição, portfólio e WhatsApp (quando informado).</p>
+
+        <h2>2. Localização e fotos enviadas</h2>
+        <p>A localização do navegador na página de busca é usada apenas naquele momento para calcular a distância aproximada entre bairros e não é armazenada no banco. Toda imagem enviada passa por reprocessamento automático que remove metadados EXIF (incluindo coordenadas GPS da câmera).</p>
+
+        <h2>3. Armazenamento e segurança</h2>
+        <p>Senhas são armazenadas com hash criptográfico forte (PBKDF2-HMAC-SHA256 com salt único). Dados cadastrais ficam protegidos em banco PostgreSQL com conexão criptografada (SSL/TLS) e imagens em armazenamento seguro em nuvem (Cloudinary). Utilizamos apenas um cookie estritamente necessário para manter sua sessão ativa (<code>HttpOnly</code> e <code>Secure</code>).</p>
+
+        <h2>4. Seus direitos pela LGPD</h2>
+        <p>Nos termos da Lei Geral de Proteção de Dados (Lei nº 13.709/2018), você tem direito de acessar, corrigir e excluir seus dados pessoais. Profissionais podem editar seus dados pelo <a class="text-link" href="/painel">Meu painel</a>, e qualquer usuário pode apagar definitivamente sua conta e histórico em <a class="text-link" href="/conta">Minha conta</a>.</p>
+      </section>
+    </article>"""
+
+
+def account_view(user, error: str = "") -> str:
+    error_html = f'<p class="form-error" role="alert">{esc(error)}</p>' if error else ""
+    role_label = "Profissional" if user["role"] == "profissional" else "Cliente"
+    return f"""
+    <section class="page-hero">
+      <div class="container">
+        <span class="eyebrow">PRIVACIDADE E LGPD</span>
+        <h1>Minha conta e dados</h1>
+        <p>Gerencie sua conta no OndeTem com total controle sobre suas informações.</p>
+      </div>
+    </section>
+    <div class="container narrow legal-page">
+      <section class="panel">
+        <h2>Resumo da sua conta</h2>
+        <div class="contact-line"><span>Nome</span><b>{esc(user['name'])}</b></div>
+        <div class="contact-line"><span>Tipo de perfil</span><b>{role_label}</b></div>
+        <div class="contact-line"><span>Documentos</span><b><a class="text-link" href="/termos">Termos</a> · <a class="text-link" href="/privacidade">Privacidade</a></b></div>
+      </section>
+
+      <section class="panel danger-panel">
+        <h2>Excluir minha conta (LGPD)</h2>
+        <p>Esta ação apaga permanentemente seu cadastro, perfil profissional, portfólio, avaliações, mensagens e sessões ativas. Não é possível desfazer.</p>
+        {error_html}
+        <form class="stack-form" method="post" action="/conta/excluir" data-confirm="Tem certeza absoluta? Todos os seus dados serão apagados permanentemente.">
+          <input type="hidden" name="csrf" value="{esc(user['csrf'])}">
+          <label>Digite sua senha atual para confirmar
+            <input type="password" name="password" autocomplete="current-password" required>
+          </label>
+          <button class="button danger" type="submit">Excluir minha conta permanentemente</button>
+        </form>
+      </section>
     </div>"""

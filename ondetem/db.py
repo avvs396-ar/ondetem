@@ -207,6 +207,14 @@ POSTGRES_SCHEMA = [
         expires_at TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS password_resets (
+        token_hash TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at TEXT NOT NULL,
+        used_at TEXT
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_prof_cat_neigh ON professionals(category, neighborhood)",
     "CREATE INDEX IF NOT EXISTS idx_reviews_pro ON reviews(professional_id)",
     "CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id)",
