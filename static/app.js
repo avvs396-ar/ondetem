@@ -271,4 +271,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (pwaBanner) pwaBanner.hidden = true;
     try { localStorage.setItem('ondetem_pwa_dismissed', '1'); } catch {}
   });
+
+  // 12. iOS (iPhone/iPad): Safari não dispara beforeinstallprompt — exibir banner com instrução direta
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  if (isIOS && !isStandalone && pwaBanner) {
+    let dismissed = false;
+    try { dismissed = localStorage.getItem('ondetem_pwa_dismissed') === '1'; } catch {}
+    if (!dismissed) {
+      const subtitle = pwaBanner.querySelector('small');
+      if (subtitle) {
+        subtitle.textContent = 'No Safari, toque em Compartilhar (↑) e em "Adicionar à Tela de Início"';
+      }
+      if (pwaInstallBtn) {
+        pwaInstallBtn.hidden = true;
+      }
+      pwaBanner.hidden = false;
+    }
+  }
 });
