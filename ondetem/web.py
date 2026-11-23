@@ -11,13 +11,15 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from ondetem import __version__
 import os
+import json
 from ondetem.config import (
     ADMIN_EMAILS,
+    APP_BASE_URL,
     CATEGORIES,
     MAX_PORTFOLIO_ITEMS,
     NEIGHBORHOODS,
@@ -47,7 +49,7 @@ from ondetem.security import (
     whatsapp_link,
 )
 from ondetem.mailer import mailer_backend_name, send_password_reset_email, send_verification_email
-from ondetem.storage import delete_stored_image, storage_backend_name, upload_image
+from ondetem.storage import delete_stored_image, resolve_image_url, storage_backend_name, upload_image
 from ondetem.views import (
     account_view,
     admin_view,
@@ -304,6 +306,36 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
             headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
         )
 
+
+    # ----------------------------- SEO (ROBOTS + SITEMAP) -----------------------------
+
+    @app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
+    def seo_robots():
+        base = os.environ.get("APP_BASE_URL", APP_BASE_URL).rstrip("/")
+        return (
+            "User-agent: *\n"
+            "Allow: /\n"
+            "Disallow: /admin\n"
+            "Disallow: /painel\n"
+            "Disallow: /conta\n"
+            "Disallow: /conversas\n"
+            "Disallow: /conversa/\n"
+            f"Sitemap: {base}/sitemap.xml\n"
+        )
+
+    @app.get("/sitemap.xml", include_in_schema=False)
+    def seo_sitemap():
+        base = os.environ.get("APP_BASE_URL", APP_BASE_URL).rstrip("/")
+        urls = [f"{base}/", f"{base}/buscar", f"{base}/termos", f"{base}/privacidade"]
+        for cat in CATEGORIES:
+            urls.append(f"{base}/buscar?categoria={quote(cat)}")
+        with open_db() as db:
+            for row in db.fetchall("SELECT user_id FROM professionals ORDER BY user_id ASC"):
+                urls.append(f"{base}/perfil/{row['user_id']}")
+        items = "".join(f"<url><loc>{u}</loc></url>" for u in urls)
+        xml = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{items}</urlset>'
+        return Response(content=xml, media_type="application/xml")
+
     # ----------------------------- API JSON -----------------------------
 
     @app.api_route("/api/health", methods=["GET", "HEAD"], tags=["Sistema"])
@@ -345,7 +377,7 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
             user = current_user(db, request)
             featured = query_professionals(db, limit=6)
             stats = query_stats(db)
-            return layout_page("Início", home_view(db, featured, stats), user, unread_count(db, user), msg[:180])
+            return layout_page("Início", home_view(db, featured, stats), user, unread_count(db, user), msg[:180], canonical_path="/")
 
     @app.get("/buscar", response_class=HTMLResponse, include_in_schema=False)
     def page_search(request: Request, msg: str = ""):
@@ -371,7 +403,51 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
                     ),
                     status_code=404,
                 )
-            return layout_page(pro["name"], profile_view(db, pro, user), user, unread_count(db, user), msg[:180])
+            base = os.environ.get("APP_BASE_URL", APP_BASE_URL).rstrip("/")
+            rating_str = f" · ★ {float(pro['rating']):.1f}" if pro.get("review_count") else ""
+            og_t = f"{pro['name']} — {pro['category']} em {pro['neighborhood']}, Manaus{rating_str}"
+            og_d = (pro.get("bio") or f"Contrate {pro['name']} ({pro['category']}) em {pro['neighborhood']}, Manaus pelo OndeTem.")[:160]
+            raw_av = str(pro.get("avatar_url") or "")
+            if raw_av.startswith("https://"):
+                og_img = raw_av
+            elif raw_av:
+                og_img = base + resolve_image_url(raw_av)
+            else:
+                og_img = base + "/static/og-ondetem.png"
+            ld = {
+                "@context": "https://schema.org",
+                "@type": "LocalBusiness",
+                "name": f"{pro['name']} ({pro['category']})",
+                "description": og_d,
+                "image": og_img,
+                "url": f"{base}/perfil/{pro['user_id']}",
+                "address": {
+                    "@type": "PostalAddress",
+                    "addressLocality": "Manaus",
+                    "addressRegion": "AM",
+                    "addressCountry": "BR",
+                    "streetAddress": pro["neighborhood"],
+                },
+            }
+            if pro.get("review_count"):
+                ld["aggregateRating"] = {
+                    "@type": "AggregateRating",
+                    "ratingValue": round(float(pro["rating"]), 1),
+                    "reviewCount": int(pro["review_count"]),
+                }
+            ld_script = f'<script type="application/ld+json">{json.dumps(ld, ensure_ascii=False)}</script>'
+            return layout_page(
+                pro["name"],
+                profile_view(db, pro, user),
+                user,
+                unread_count(db, user),
+                msg[:180],
+                og_title=og_t,
+                og_desc=og_d,
+                og_image=og_img,
+                canonical_path=f"/perfil/{pro['user_id']}",
+                extra_head=ld_script,
+            )
 
     @app.get("/cadastro", response_class=HTMLResponse, include_in_schema=False)
     def page_signup(request: Request, role: str = "cliente"):

@@ -1,3 +1,3 @@
-"""Pacote principal da plataforma OndeTem (20 categorias · FastAPI + PostgreSQL + Cloudinary + Brevo + iOS PWA)."""
+"""Pacote principal da plataforma OndeTem (SEO + Dynamic OG + GitHub Actions CI + Custom Domain)."""
 
-__version__ = "3.6.1"
+__version__ = "3.7.0"

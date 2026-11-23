@@ -338,5 +338,21 @@ class FastApiIntegrationTests(unittest.TestCase):
             self.assertIn(cat, home.text)
 
 
+
+    def test_seo_robots_sitemap_and_dynamic_og(self):
+        rob = self.client.get("/robots.txt")
+        self.assertEqual(rob.status_code, 200)
+        self.assertIn("Sitemap:", rob.text)
+
+        sm = self.client.get("/sitemap.xml")
+        self.assertEqual(sm.status_code, 200)
+        self.assertIn("/perfil/4", sm.text)
+
+        prof = self.client.get("/perfil/4")
+        self.assertEqual(prof.status_code, 200)
+        self.assertIn('property="og:title" content="Carlos Silva', prof.text)
+        self.assertIn('application/ld+json', prof.text)
+
+
 if __name__ == "__main__":
     unittest.main()

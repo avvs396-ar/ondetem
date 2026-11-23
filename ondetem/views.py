@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from urllib.parse import urlencode
 
-from ondetem.config import CATEGORIES, NEIGHBORHOODS, READ_ONLY_DEMO, RESPONSE_TIMES
+from ondetem.config import APP_BASE_URL, CATEGORIES, NEIGHBORHOODS, READ_ONLY_DEMO, RESPONSE_TIMES
 from ondetem.storage import resolve_image_url
 from ondetem.security import (
     esc,
@@ -157,6 +157,11 @@ def layout_page(
     unread: int = 0,
     notice: str = "",
     notice_kind: str = "ok",
+    og_title: str = "",
+    og_desc: str = "",
+    og_image: str = "",
+    canonical_path: str = "",
+    extra_head: str = "",
 ) -> str:
     if user:
         dashboard = (
@@ -206,11 +211,13 @@ def layout_page(
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="OndeTem">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="OndeTem Manaus · Profissionais autônomos no seu bairro">
-  <meta property="og:description" content="Encontre eletricistas, encanadores, técnicos de ar-condicionado e outros profissionais avaliados em Manaus.">
-  <meta property="og:image" content="https://ondetem-manaus.onrender.com/static/og-ondetem.png">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
+  <meta property="og:site_name" content="OndeTem Manaus">
+  <meta property="og:title" content="{esc(og_title or (title + ' · OndeTem Manaus'))}">
+  <meta property="og:description" content="{esc(og_desc or 'Encontre profissionais autônomos avaliados em Manaus com contato direto no WhatsApp.')}">
+  <meta property="og:image" content="{esc(og_image or (APP_BASE_URL + '/static/og-ondetem.png'))}">
+  <meta name="twitter:card" content="summary_large_image">
+  {f'<link rel="canonical" href="{esc(APP_BASE_URL + canonical_path)}">' if canonical_path else ''}
+  {extra_head}
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/app.js" defer></script>
 </head>

@@ -110,3 +110,6 @@ ADMIN_EMAILS: set[str] = {
     for e in os.environ.get("ADMIN_EMAILS", "").split(",")
     if e.strip()
 }
+
+# URL pública oficial (atualize quando conectar domínio próprio, ex.: https://ondetem.me)
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://ondetem-manaus.onrender.com").rstrip("/")
