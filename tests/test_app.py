@@ -19,7 +19,10 @@ from ondetem.security import (
     password_hash,
     password_matches,
     safe_destination,
+    hash_cpf,
+    mask_cpf,
     sanitize_image,
+    validate_cpf,
 )
 from ondetem.web import create_app
 
@@ -70,6 +73,15 @@ class SecurityAndDbUnitTests(unittest.TestCase):
             resolve_image_url("https://res.cloudinary.com/demo/image/upload/a.jpg"),
             "https://res.cloudinary.com/demo/image/upload/a.jpg",
         )
+
+
+
+    def test_cpf_validation_mask_and_hash(self):
+        self.assertEqual(validate_cpf("529.982.247-25"), "52998224725")
+        self.assertEqual(validate_cpf("111.111.111-11"), "")
+        self.assertEqual(validate_cpf("123.456.789-00"), "")
+        self.assertEqual(mask_cpf("52998224725"), "***.***.***-25")
+        self.assertEqual(len(hash_cpf("52998224725")), 64)
 
 
 class FastApiIntegrationTests(unittest.TestCase):
@@ -352,6 +364,32 @@ class FastApiIntegrationTests(unittest.TestCase):
         self.assertEqual(prof.status_code, 200)
         self.assertIn('property="og:title" content="Carlos Silva', prof.text)
         self.assertIn('application/ld+json', prof.text)
+
+
+
+    def test_cpf_verification_privacy_and_lgpd_seal(self):
+        # Rodapé exibe selo informativo LGPD
+        home = self.client.get("/")
+        self.assertIn("Adequado à LGPD", home.text)
+
+        # Login como João Pereira (não verificado inicialmente)
+        self.client.post("/entrar", data={"email": "joao@ondetem.local", "password": "Demo123!"}, follow_redirects=False)
+        panel = self.client.get("/painel")
+        csrf = re.search(r'name="csrf" value="([^"]+)"', panel.text).group(1)
+
+        # Envia CPF válido com consentimento
+        res = self.client.post(
+            "/perfil/verificar-cpf",
+            data={"csrf": csrf, "cpf": "529.982.247-25", "cpf_consent": "1"},
+            follow_redirects=False,
+        )
+        self.assertEqual(res.status_code, 303)
+
+        # API pública jamais vaza cpf_hash ou cpf_masked
+        api = self.client.get("/api/profissionais").json()
+        for item in api["items"]:
+            self.assertNotIn("cpf_hash", item)
+            self.assertNotIn("cpf_masked", item)
 
 
 if __name__ == "__main__":

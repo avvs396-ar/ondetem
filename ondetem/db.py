@@ -155,6 +155,9 @@ POSTGRES_SCHEMA = [
         whatsapp TEXT NOT NULL DEFAULT '',
         avatar_url TEXT NOT NULL DEFAULT '',
         whatsapp_clicks INTEGER NOT NULL DEFAULT 0,
+        cpf_hash TEXT NOT NULL DEFAULT '',
+        cpf_masked TEXT NOT NULL DEFAULT '',
+        verification_status TEXT NOT NULL DEFAULT 'none',
         response_time TEXT NOT NULL DEFAULT 'Responde em até 1 hora',
         verified INTEGER NOT NULL DEFAULT 0,
         available INTEGER NOT NULL DEFAULT 1,
@@ -252,6 +255,9 @@ def init_database(db_path: Path | None = None, database_url: str | None = None) 
             db.execute("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS avatar_url TEXT NOT NULL DEFAULT ''")
             db.execute("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS whatsapp_clicks INTEGER NOT NULL DEFAULT 0")
             db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER NOT NULL DEFAULT 1")
+            db.execute("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS cpf_hash TEXT NOT NULL DEFAULT ''")
+            db.execute("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS cpf_masked TEXT NOT NULL DEFAULT ''")
+            db.execute("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'none'")
         else:
             cols = {row["name"] for row in db.fetchall("PRAGMA table_info(professionals)")}
             if "avatar_url" not in cols:
@@ -261,6 +267,12 @@ def init_database(db_path: Path | None = None, database_url: str | None = None) 
             ucols = {row["name"] for row in db.fetchall("PRAGMA table_info(users)")}
             if "email_verified" not in ucols:
                 db.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1")
+            if "cpf_hash" not in cols:
+                db.execute("ALTER TABLE professionals ADD COLUMN cpf_hash TEXT NOT NULL DEFAULT ''")
+            if "cpf_masked" not in cols:
+                db.execute("ALTER TABLE professionals ADD COLUMN cpf_masked TEXT NOT NULL DEFAULT ''")
+            if "verification_status" not in cols:
+                db.execute("ALTER TABLE professionals ADD COLUMN verification_status TEXT NOT NULL DEFAULT 'none'")
         if db.fetchone("SELECT 1 AS ok FROM users LIMIT 1"):
             return
         _seed_demo_data(db)

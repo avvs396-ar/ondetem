@@ -1,3 +1,3 @@
-"""Pacote principal da plataforma OndeTem (SEO + Dynamic OG + GitHub Actions CI + Custom Domain)."""
+"""Pacote principal da plataforma OndeTem (Verificação CPF Privacy-by-Design + Selo LGPD)."""
 
-__version__ = "3.7.0"
+__version__ = "3.8.0"

@@ -34,6 +34,9 @@ from ondetem.db import DBSession, IntegrityConflictError, get_db, init_database
 from ondetem.security import (
     AUTH_LIMITER,
     clean_whatsapp,
+    hash_cpf,
+    mask_cpf,
+    validate_cpf,
     distance_km,
     normalize_text,
     now_iso,
@@ -367,7 +370,8 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
                     "ordenar": ordenar,
                 },
             )
-            return {"count": len(found), "items": found}
+            safe_items = [{k: v for k, v in item.items() if k not in ("cpf_hash", "cpf_masked")} for item in found]
+            return {"count": len(safe_items), "items": safe_items}
 
     # ----------------------------- PÁGINAS HTML -----------------------------
 
@@ -642,6 +646,36 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
             )
             return RedirectResponse(url="/painel?msg=" + quote("Perfil atualizado com sucesso."), status_code=303)
 
+
+
+    @app.post("/perfil/verificar-cpf", include_in_schema=False)
+    def action_verify_cpf(
+        request: Request,
+        csrf: str = Form(""),
+        cpf: str = Form(""),
+        cpf_consent: str = Form(""),
+    ):
+        with open_db() as db:
+            user = current_user(db, request)
+            if not check_csrf(user, csrf) or user["role"] != "profissional":
+                return HTMLResponse(layout_page("Acesso negado", '<section class="container section"><h1>Acesso negado.</h1></section>'), status_code=403)
+            if cpf_consent != "1":
+                return RedirectResponse(url="/painel?msg=" + quote("Marque o consentimento LGPD para solicitar verificação."), status_code=303)
+            digits = validate_cpf(cpf)
+            if not digits:
+                return RedirectResponse(url="/painel?msg=" + quote("CPF inválido. Confira os 11 dígitos e tente novamente."), status_code=303)
+            c_hash = hash_cpf(digits)
+            dup = db.fetchone(
+                "SELECT user_id FROM professionals WHERE cpf_hash = ? AND user_id <> ?",
+                (c_hash, user["id"]),
+            )
+            if dup:
+                return RedirectResponse(url="/painel?msg=" + quote("Este CPF já está vinculado a outro perfil profissional."), status_code=303)
+            db.execute(
+                "UPDATE professionals SET cpf_hash = ?, cpf_masked = ?, verification_status = 'pending' WHERE user_id = ?",
+                (c_hash, mask_cpf(digits), user["id"]),
+            )
+            return RedirectResponse(url="/painel?msg=" + quote("CPF validado com segurança! Solicitação enviada para aprovação no Admin."), status_code=303)
 
     @app.post("/perfil/foto", include_in_schema=False)
     async def action_update_avatar(
@@ -1033,7 +1067,7 @@ def create_app(db_path: Path | None = None, database_url: str | None = None) -> 
             if not row:
                 return RedirectResponse(url="/admin?msg=" + quote("Profissional não encontrado."), status_code=303)
             new_val = 0 if row["verified"] else 1
-            db.execute("UPDATE professionals SET verified = ? WHERE user_id = ?", (new_val, pro_id))
+            db.execute("UPDATE professionals SET verified = ?, verification_status = ? WHERE user_id = ?", (new_val, "approved" if new_val else "none", pro_id))
             msg = "Selo Verificado aprovado!" if new_val else "Selo Verificado removido."
             return RedirectResponse(url="/admin?msg=" + quote(msg), status_code=303)
 

@@ -310,3 +310,30 @@ def verify_turnstile(token: str, remote_ip: str = "") -> bool:
             return bool(res.get("success"))
     except Exception:
         return False
+
+
+def validate_cpf(raw_cpf: str) -> str:
+    """Valida CPF brasileiro pelos dois dígitos verificadores. Retorna 11 dígitos ou ''."""
+    digits = re.sub(r"\D+", "", raw_cpf or "")
+    if len(digits) != 11 or digits == digits[0] * 11:
+        return ""
+    for check_pos in (9, 10):
+        total = sum(int(digits[i]) * ((check_pos + 1) - i) for i in range(check_pos))
+        expected = (total * 10) % 11
+        if expected == 10:
+            expected = 0
+        if int(digits[check_pos]) != expected:
+            return ""
+    return digits
+
+
+def mask_cpf(digits: str) -> str:
+    """Mascara CPF mantendo apenas os 2 últimos dígitos (LGPD - minimização)."""
+    if len(digits) != 11:
+        return ""
+    return f"***.***.***-{digits[-2:]}"
+
+
+def hash_cpf(digits: str) -> str:
+    """Gera hash HMAC-SHA256 irreversível do CPF para unicidade sem armazenar o número puro."""
+    return hmac.new(_CAPTCHA_SECRET.encode("utf-8"), f"cpf:{digits}".encode("utf-8"), hashlib.sha256).hexdigest()

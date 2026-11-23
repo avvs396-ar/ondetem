@@ -2060,3 +2060,20 @@ textarea {
   font-size: 0.78rem;
   font-weight: 700;
 }
+
+.lgpd-seal a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 99px;
+  background: var(--ok-bg);
+  color: var(--ok-text);
+  font-weight: 700;
+  font-size: 0.78rem;
+  border: 1px solid #bfe6d2;
+}
+
+.lgpd-seal a:hover {
+  background: #d2f1e1;
+}

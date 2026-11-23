@@ -254,7 +254,7 @@ def layout_page(
           <a href="/privacidade">Política de Privacidade (LGPD)</a>
           {(' · <a href="/conta">Minha conta e dados</a>') if user else ''}
         </p>
-        <p>OndeTem Manaus · Plataforma de Serviços Autônomos</p>
+        <p class="lgpd-seal"><a href="/privacidade" title="Saiba como protegemos seus dados">{svg_icon("shield", "ico-xs")} Adequado à LGPD · Lei nº 13.709/2018</a></p>
       </div>
     </div>
   </footer>
@@ -847,6 +847,28 @@ def dashboard_view(db: sqlite3.Connection, user, unread: int) -> str:
         for w in works
     )
 
+    if pro["verified"]:
+        cpf_box = '<p class="verified-pill">✓ Seu perfil já possui o selo Verificado ativo!</p>'
+    elif (pro["verification_status"] if "verification_status" in pro.keys() else "") == "pending":
+        cpf_box = (
+            f'<p class="notice warn" style="border-radius:10px;text-align:left;padding:12px;">'
+            f'Solicitação em análise pelo administrador (CPF {esc(pro["cpf_masked"] if "cpf_masked" in pro.keys() else "")}). '
+            f'Assim que aprovada, o selo Verificado aparecerá no seu perfil.</p>'
+        )
+    else:
+        cpf_box = f"""<p>Aumente a confiança dos moradores de Manaus solicitando o selo <strong>Verificado</strong>. Pela LGPD, seu CPF é validado e convertido em <strong>hash criptográfico</strong> — nunca salvamos o número aberto nem exibimos no seu perfil.</p>
+          <form class="stack-form" action="/perfil/verificar-cpf" method="post">
+            <input type="hidden" name="csrf" value="{csrf}">
+            <label>CPF do titular (somente números ou 000.000.000-00)
+              <input name="cpf" inputmode="numeric" maxlength="14" required placeholder="000.000.000-00">
+            </label>
+            <label class="checkbox terms-check">
+              <input type="checkbox" name="cpf_consent" value="1" required>
+              <span>Autorizo o uso exclusivo do meu CPF para validação de identidade e prevenção a fraudes, conforme a <a href="/privacidade" target="_blank">Política de Privacidade (LGPD)</a>.</span>
+            </label>
+            <button class="button small" type="submit">Solicitar selo Verificado</button>
+          </form>"""
+
     return f"""
     <section class="page-hero">
       <div class="container">
@@ -934,6 +956,11 @@ def dashboard_view(db: sqlite3.Connection, user, unread: int) -> str:
             </label>
             <button class="button small" type="submit">Adicionar ao portfólio</button>
           </form>
+        </div>
+
+        <div class="panel">
+          <h2>Selo de Identidade Verificada (CPF)</h2>
+          {cpf_box}
         </div>
 
         <div class="panel">
@@ -1152,6 +1179,9 @@ def privacy_view() -> str:
         <h2>2. Localização e fotos enviadas</h2>
         <p>A localização do navegador na página de busca é usada apenas naquele momento para calcular a distância aproximada entre bairros e não é armazenada no banco. Toda imagem enviada passa por reprocessamento automático que remove metadados EXIF (incluindo coordenadas GPS da câmera).</p>
 
+        <h2>2.1. Verificação de identidade por CPF (Profissionais)</h2>
+        <p>Profissionais que solicitam o selo <strong>Verificado</strong> informam o CPF de forma opcional e mediante consentimento específico. Aplicando o princípio da minimização da LGPD, o sistema valida os dígitos verificadores e armazena <strong>apenas um hash criptográfico irreversível (HMAC-SHA256)</strong> para impedir cadastros duplicados e os dois últimos dígitos mascarados (<code>***.***.***-XX</code>) para conferência administrativa. O número completo do CPF nunca é salvo em texto puro e jamais é exibido publicamente.</p>
+
         <h2>3. Armazenamento e segurança</h2>
         <p>Senhas são armazenadas com hash criptográfico forte (PBKDF2-HMAC-SHA256 com salt único). Dados cadastrais ficam protegidos em banco PostgreSQL com conexão criptografada (SSL/TLS) e imagens em armazenamento seguro em nuvem (Cloudinary). Utilizamos apenas um cookie estritamente necessário para manter sua sessão ativa (<code>HttpOnly</code> e <code>Secure</code>).</p>
 
@@ -1214,9 +1244,10 @@ def admin_view(user, summary: dict, pros: list, recent_reviews: list, top_neighb
               <td class="num"><strong>{int(p['whatsapp_clicks'] or 0)}</strong></td>
               <td class="num">{f"{float(p['rating']):.1f} ★ ({int(p['review_count'])})" if p['review_count'] else '—'}</td>
               <td>
-                <span class="{'verified-pill' if p['verified'] else 'muted'}">
-                  {'Verificado' if p['verified'] else 'Pendente'}
+                <span class="{'verified-pill' if p['verified'] else ('status busy' if p.get('verification_status') == 'pending' else 'muted')}">
+                  {'Verificado' if p['verified'] else ('CPF enviado' if p.get('verification_status') == 'pending' else 'Sem selo')}
                 </span>
+                {f'<small style="display:block;color:var(--muted);font-size:.72rem;margin-top:3px;">CPF {esc(p["cpf_masked"])}</small>' if p.get('cpf_masked') else ''}
               </td>
               <td>
                 <form action="/admin/verificar/{p['user_id']}" method="post">
