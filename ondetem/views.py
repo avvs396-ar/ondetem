@@ -40,6 +40,18 @@ ICONS: dict[str, str] = {
     "trash": '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/>',
     "target": '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
     "menu": '<path d="M4 6h16M4 12h16M4 18h16"/>',
+    "car": '<path d="M5 17h14M6 17l-1-5 2.5-5h9L19 12l-1 5"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/>',
+    "laptop": '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/>',
+    "calculator": '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 11h2M14 11h2M8 15h2M14 15h2M8 19h8"/>',
+    "music": '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+    "truck": '<path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>',
+    "leaf": '<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10z"/><path d="M2 21c0-3 1.9-5.4 5.1-6.5"/>',
+    "camera": '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+    "palette": '<circle cx="13.5" cy="6.5" r=".8"/><circle cx="17.5" cy="10.5" r=".8"/><circle cx="8.5" cy="7.5" r=".8"/><circle cx="6.5" cy="12.5" r=".8"/><path d="M12 2a10 10 0 0 0 0 20c1.4 0 2.5-1.1 2.5-2.5 0-.6-.2-1.2-.6-1.6-.4-.4-.6-1-.6-1.6 0-1.4 1.1-2.5 2.5-2.5H18a4 4 0 0 0 4-4c0-5-4.5-7.8-10-7.8z"/>',
+    "book": '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+    "dumbbell": '<path d="M6.5 6.5v11M17.5 6.5v11M3 9v6M21 9v6M6.5 12h11"/>',
+    "scissors": '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/>',
+    "users": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
 }
 
 
@@ -277,11 +289,11 @@ def home_view(db: sqlite3.Connection, pros_featured: list, stats: dict) -> str:
         <div class="hero-copy">
           <span class="eyebrow">{svg_icon('pin', 'ico-xs')} FEITO PARA MANAUS · AM</span>
           <h1>Precisou de um profissional? <em>Aqui você encontra.</em></h1>
-          <p>Encontre eletricistas, encanadores, técnicos de ar-condicionado e outros autônomos avaliados no seu bairro, com contato direto via WhatsApp ou chat.</p>
+          <p>Encontre eletricistas, diaristas, mecânicos, técnicos de TI, contadores, músicos e outros profissionais avaliados no seu bairro, com contato direto via WhatsApp ou chat.</p>
           <form class="search-box" action="/buscar" method="get" role="search">
             <label>
               <span>Qual serviço você precisa?</span>
-              <input name="q" placeholder="Ex.: eletricista, ar-condicionado, pintura..." aria-label="Qual serviço você precisa?">
+              <input name="q" placeholder="Ex.: diarista, mecânico, TI, contador, músico..." aria-label="Qual serviço você precisa?">
             </label>
             <label>
               <span>Em qual bairro?</span>
@@ -332,7 +344,7 @@ def home_view(db: sqlite3.Connection, pros_featured: list, stats: dict) -> str:
       <div class="section-heading">
         <div>
           <span class="eyebrow">CATEGORIAS POPULARES</span>
-          <h2>Um profissional certo para cada reparo</h2>
+          <h2>20 áreas de serviços em Manaus</h2>
         </div>
         <a href="/buscar" class="text-link">Ver todos os profissionais ↗</a>
       </div>

@@ -637,8 +637,8 @@ nav a:hover, nav button:hover, .text-link:hover {
 .category {
   display: flex;
   flex-direction: column;
-  min-height: 162px;
-  padding: 20px;
+  min-height: 146px;
+  padding: 16px 18px;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: var(--radius);
