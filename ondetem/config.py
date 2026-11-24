@@ -47,27 +47,42 @@ MAX_PORTFOLIO_ITEMS = 12
 MANAUS_TZ = timezone(timedelta(hours=-4))
 
 # Categorias de serviços com identificador de ícone SVG
+CATEGORY_GROUPS: list[str] = [
+    "Casa & Reparos",
+    "Confeitaria & Eventos",
+    "Tech & Negócios",
+    "Cuidados & Aulas",
+]
+
 CATEGORIES: dict[str, dict[str, str]] = {
-    "Eletricista": {"icon": "bolt", "short": "Elétrica residencial e predial"},
-    "Encanador": {"icon": "droplet", "short": "Hidráulica e vazamentos"},
-    "Ar-condicionado": {"icon": "snowflake", "short": "Instalação e higienização"},
-    "Diarista / Limpeza": {"icon": "sparkles", "short": "Limpeza residencial e pós-obra"},
-    "Mecânico / Auto": {"icon": "car", "short": "Revisão, freios e socorro"},
-    "Técnico de TI / Informática": {"icon": "laptop", "short": "PCs, redes, formatação e suporte"},
-    "Contador / MEI": {"icon": "calculator", "short": "Imposto de renda, MEI e fiscal"},
-    "Músico / Eventos": {"icon": "music", "short": "Voz e violão, DJ, som e festas"},
-    "Pintor": {"icon": "brush", "short": "Pintura interna e externa"},
-    "Montador de móveis": {"icon": "wrench", "short": "Montagem e ajustes"},
-    "Pedreiro / Reformas": {"icon": "hammer", "short": "Alvenaria, pisos e reparos"},
-    "Chaveiro": {"icon": "key", "short": "Aberturas e cópias 24h"},
-    "Frete / Mudanças": {"icon": "truck", "short": "Carreto, entregas e mudanças"},
-    "Jardineiro / Paisagismo": {"icon": "leaf", "short": "Poda, grama e jardins"},
-    "Fotógrafo / Vídeo": {"icon": "camera", "short": "Ensaios, eventos e redes"},
-    "Design / Social Media": {"icon": "palette", "short": "Artes, logos, sites e gestão"},
-    "Professor Particular": {"icon": "book", "short": "Reforço, inglês e concursos"},
-    "Personal Trainer": {"icon": "dumbbell", "short": "Treino funcional e saúde"},
-    "Beleza / Cabeleireiro": {"icon": "scissors", "short": "Corte, manicure e maquiagem"},
-    "Cuidador / Babá": {"icon": "users", "short": "Cuidado de idosos e crianças"},
+    # Casa & Reparos
+    "Eletricista": {"icon": "bolt", "short": "Elétrica residencial e predial", "group": "Casa & Reparos"},
+    "Encanador": {"icon": "droplet", "short": "Hidráulica e vazamentos", "group": "Casa & Reparos"},
+    "Ar-condicionado": {"icon": "snowflake", "short": "Instalação e higienização", "group": "Casa & Reparos"},
+    "Diarista / Limpeza": {"icon": "sparkles", "short": "Limpeza residencial e pós-obra", "group": "Casa & Reparos"},
+    "Pintor": {"icon": "brush", "short": "Pintura interna e externa", "group": "Casa & Reparos"},
+    "Montador de móveis": {"icon": "wrench", "short": "Montagem e ajustes", "group": "Casa & Reparos"},
+    "Pedreiro / Reformas": {"icon": "hammer", "short": "Alvenaria, pisos e reparos", "group": "Casa & Reparos"},
+    "Chaveiro": {"icon": "key", "short": "Aberturas e cópias 24h", "group": "Casa & Reparos"},
+    "Jardineiro / Paisagismo": {"icon": "leaf", "short": "Poda, grama e jardins", "group": "Casa & Reparos"},
+    "Frete / Mudanças": {"icon": "truck", "short": "Carreto, entregas e mudanças", "group": "Casa & Reparos"},
+    # Confeitaria & Eventos
+    "Confeiteira / Bolos & Doces": {"icon": "cake", "short": "Bolos decorados, docinhos e tortas", "group": "Confeitaria & Eventos"},
+    "Salgados & Buffet": {"icon": "utensils", "short": "Salgadinhos, kits festa e buffet", "group": "Confeitaria & Eventos"},
+    "Marmitas & Comida Caseira": {"icon": "chef", "short": "Refeições, fit e encomendas", "group": "Confeitaria & Eventos"},
+    "Decoração de Festas": {"icon": "party", "short": "Painéis, balões e mesas temáticas", "group": "Confeitaria & Eventos"},
+    "Músico / Eventos": {"icon": "music", "short": "Voz e violão, DJ, som e festas", "group": "Confeitaria & Eventos"},
+    "Fotógrafo / Vídeo": {"icon": "camera", "short": "Ensaios, eventos e redes", "group": "Confeitaria & Eventos"},
+    # Tech & Negócios
+    "Mecânico / Auto": {"icon": "car", "short": "Revisão, freios e socorro", "group": "Tech & Negócios"},
+    "Técnico de TI / Informática": {"icon": "laptop", "short": "PCs, redes, formatação e suporte", "group": "Tech & Negócios"},
+    "Contador / MEI": {"icon": "calculator", "short": "Imposto de renda, MEI e fiscal", "group": "Tech & Negócios"},
+    "Design / Social Media": {"icon": "palette", "short": "Artes, logos, sites e gestão", "group": "Tech & Negócios"},
+    # Cuidados & Aulas
+    "Beleza / Cabeleireiro": {"icon": "scissors", "short": "Corte, manicure e maquiagem", "group": "Cuidados & Aulas"},
+    "Personal Trainer": {"icon": "dumbbell", "short": "Treino funcional e saúde", "group": "Cuidados & Aulas"},
+    "Professor Particular": {"icon": "book", "short": "Reforço, inglês e concursos", "group": "Cuidados & Aulas"},
+    "Cuidador / Babá": {"icon": "users", "short": "Cuidado de idosos e crianças", "group": "Cuidados & Aulas"},
 }
 
 # Coordenadas aproximadas dos principais bairros de Manaus (AM)

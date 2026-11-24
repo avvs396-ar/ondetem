@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from urllib.parse import urlencode
 
-from ondetem.config import APP_BASE_URL, CATEGORIES, NEIGHBORHOODS, READ_ONLY_DEMO, RESPONSE_TIMES
+from ondetem.config import APP_BASE_URL, CATEGORIES, CATEGORY_GROUPS, NEIGHBORHOODS, READ_ONLY_DEMO, RESPONSE_TIMES
 from ondetem.storage import resolve_image_url
 from ondetem.security import (
     esc,
@@ -52,6 +52,10 @@ ICONS: dict[str, str] = {
     "dumbbell": '<path d="M6.5 6.5v11M17.5 6.5v11M3 9v6M21 9v6M6.5 12h11"/>',
     "scissors": '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/>',
     "users": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+    "cake": '<path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"/><path d="M2 21h20M7 8v3M12 8v3M17 8v3M7 4h.01M12 4h.01M17 4h.01"/>',
+    "utensils": '<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"/>',
+    "chef": '<path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6z"/><line x1="6" y1="17" x2="18" y2="17"/>',
+    "party": '<path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01M22 8h.01M15 2h.01M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12v0c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m11 13 .5 2.5L14 16l-2.5.5L11 19l-.5-2.5L8 16l2.5-.5z"/>',
 }
 
 
@@ -280,8 +284,17 @@ def layout_page(
 
 
 def home_view(db: sqlite3.Connection, pros_featured: list, stats: dict) -> str:
+    cat_tabs = (
+        '<div class="cat-tabs" role="tablist" aria-label="Áreas de atuação">'
+        '<button type="button" class="cat-tab active" data-cat-tab="all" role="tab" aria-selected="true">Todas (24)</button>'
+        + "".join(
+            f'<button type="button" class="cat-tab" data-cat-tab="{esc(grp)}" role="tab" aria-selected="false">{esc(grp)}</button>'
+            for grp in CATEGORY_GROUPS
+        )
+        + "</div>"
+    )
     category_cards = "".join(
-        f"""<a class="category" href="/buscar?{urlencode({'categoria': cat})}">
+        f"""<a class="category" data-cat-group="{esc(meta['group'])}" href="/buscar?{urlencode({'categoria': cat})}">
               <span class="cat-icon-wrap">{svg_icon(meta['icon'], 'ico-cat')}</span>
               <strong>{esc(cat)}</strong>
               <span class="cat-sub">{esc(meta['short'])}</span>
@@ -300,7 +313,7 @@ def home_view(db: sqlite3.Connection, pros_featured: list, stats: dict) -> str:
           <form class="search-box" action="/buscar" method="get" role="search">
             <label>
               <span>Qual serviço você precisa?</span>
-              <input name="q" placeholder="Ex.: diarista, mecânico, TI, contador, músico..." aria-label="Qual serviço você precisa?">
+              <input name="q" placeholder="Ex.: confeiteira, diarista, mecânico, TI, músico..." aria-label="Qual serviço você precisa?">
             </label>
             <label>
               <span>Em qual bairro?</span>
@@ -351,11 +364,12 @@ def home_view(db: sqlite3.Connection, pros_featured: list, stats: dict) -> str:
       <div class="section-heading">
         <div>
           <span class="eyebrow">CATEGORIAS POPULARES</span>
-          <h2>20 áreas de serviços em Manaus</h2>
+          <h2>24 áreas de serviços em Manaus</h2>
         </div>
         <a href="/buscar" class="text-link">Ver todos os profissionais ↗</a>
       </div>
-      <div class="category-grid">{category_cards}</div>
+      {cat_tabs}
+      <div class="category-grid" data-cat-grid>{category_cards}</div>
     </section>
 
     <section class="section section-tint" id="profissionais">

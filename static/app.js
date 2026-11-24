@@ -289,4 +289,23 @@ document.addEventListener('DOMContentLoaded', () => {
       pwaBanner.hidden = false;
     }
   }
+
+  // 13. Abas de áreas/categorias na página inicial
+  const catTabs = document.querySelectorAll('[data-cat-tab]');
+  const catCards = document.querySelectorAll('[data-cat-group]');
+  if (catTabs.length && catCards.length) {
+    catTabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const chosen = tab.dataset.catTab;
+        catTabs.forEach((b) => {
+          const on = b === tab;
+          b.classList.toggle('active', on);
+          b.setAttribute('aria-selected', String(on));
+        });
+        catCards.forEach((card) => {
+          card.hidden = chosen !== 'all' && card.dataset.catGroup !== chosen;
+        });
+      });
+    });
+  }
 });

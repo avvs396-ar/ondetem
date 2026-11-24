@@ -346,8 +346,8 @@ class FastApiIntegrationTests(unittest.TestCase):
     def test_expanded_professions_available(self):
         home = self.client.get("/")
         self.assertEqual(home.status_code, 200)
-        for cat in ("Diarista / Limpeza", "Mecânico / Auto", "Técnico de TI / Informática", "Contador / MEI", "Músico / Eventos"):
-            self.assertIn(cat, home.text)
+        for cat in ("Diarista / Limpeza", "Mecânico / Auto", "Técnico de TI / Informática", "Contador / MEI", "Músico / Eventos", "Confeiteira / Bolos & Doces", "Salgados & Buffet", "Marmitas & Comida Caseira", "Decoração de Festas", "Confeitaria & Eventos"):
+            self.assertIn(cat.replace("&", "&amp;"), home.text)
 
 
 
